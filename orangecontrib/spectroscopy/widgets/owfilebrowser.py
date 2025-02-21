@@ -58,7 +58,7 @@ class FileFilterProxyModel(QSortFilterProxyModel):
     
 
 class OWFileBrowser(widget.OWWidget):
-    name = "Quick File"
+    name = "File Browser"
     id = "orangecontrib.protosec.widgets.filebrowser"
     icon = "icons/quickfile.svg"
     description = "Read data from an input file selected from the file tree" \
@@ -70,6 +70,8 @@ class OWFileBrowser(widget.OWWidget):
                       doc="Attribute-valued dataset read from the input file.")
         
     want_main_area = False
+
+    SIZE_LIMIT = 1e7
 
     settingsHandler = PerfectDomainContextHandler(
         match_values=PerfectDomainContextHandler.MATCH_VALUES_ALL
@@ -83,7 +85,7 @@ class OWFileBrowser(widget.OWWidget):
             "Categorical variables with >100 values may decrease performance.")
 
     class Error(widget.OWWidget.Error):
-        missing_reader = Msg("No tile-by-tile reader for this file.")
+        missing_reader = Msg("No reader for this file.")
         file_not_found = widget.Msg("File not found.")
         sheet_error = widget.Msg("Error listing available sheets.")
         unknown = widget.Msg("Read error:\n{}")
@@ -99,7 +101,7 @@ class OWFileBrowser(widget.OWWidget):
         self.reader = None
         self.auto_reader = False
 
-        if fixed_reader is True:
+        if fixed_reader == True:
             self.reader_description = reader_description
             self.reader = self.get_described_reader()
         else:
@@ -217,7 +219,12 @@ class OWFileBrowser(widget.OWWidget):
         indexItem = self.fileSystemModel.index(source_index.row(), 0, source_index.parent())
         self.filepath = self.fileSystemModel.filePath(indexItem)
         if not self.fileSystemModel.isDir(indexItem):
-            self._try_load()
+            error = self._try_load()
+            if error:
+                error()
+                self.data = None
+                self.Outputs.data.send(None)
+                self.infolabel.setText("No data.")
 
     def on_double_click(self):
         idx = self.treeview.currentIndex()
@@ -229,6 +236,9 @@ class OWFileBrowser(widget.OWWidget):
             self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
 
     def _try_load(self):
+
+        self.clear_messages()
+
         if self.filepath and not os.path.exists(self.filepath):
             return self.Error.file_not_found
         
@@ -238,8 +248,6 @@ class OWFileBrowser(widget.OWWidget):
                 reader = FileFormat.get_reader(self.filepath)
                 qname = reader.qualified_name()
                 self.reader = class_from_qualified_name(qname)
-            except Exception as ex:
-                raise MissingReaderException(f'Can not find reader') from ex
             except:
                 return self.Error.missing_reader
             
@@ -256,10 +264,11 @@ class OWFileBrowser(widget.OWWidget):
             except Exception as ex:
                 log.exception(ex)
                 return lambda x=ex: self.Error.unknown(str(x))
-            except:
-                pass
             if warnings:
                 self.Warning.load_warning(warnings[-1].message.args[0])
+
+        if os.path.getsize(self.filepath) > self.SIZE_LIMIT:
+                return self.Warning.file_too_big
 
         self.infolabel.setText(self._describe(data))
 
