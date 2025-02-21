@@ -2,11 +2,12 @@ import os
 import re
 import logging
 from warnings import catch_warnings
+import pathlib
 
 from AnyQt.QtWidgets import \
-    QStyle, QVBoxLayout, QHBoxLayout, QVBoxLayout, QFileDialog, QFileSystemModel, QLabel, \
-    QLineEdit, QTreeView, QTreeWidget, QTreeWidgetItem, QComboBox, QHeaderView, QSizePolicy as Policy, QCompleter
-from AnyQt.QtCore import QSize, QDir, QSortFilterProxyModel
+    QStyle, QVBoxLayout, QHBoxLayout, QVBoxLayout, QFileDialog, QFileSystemModel, QScrollArea, QLabel, QWidget, QFrame,\
+    QLineEdit, QTreeView, QComboBox, QHeaderView, QSizePolicy as Policy, QCompleter
+from AnyQt.QtCore import QSize, QDir, QPoint, Qt, Signal, QSortFilterProxyModel
 
 from orangewidget.utils.filedialogs import format_filter
 
@@ -25,6 +26,104 @@ import orangecontrib.spectroscopy
 DEFAULT_READER_TEXT = "Automatically detect type"
 
 log = logging.getLogger(__name__)
+
+class AddressBarLabel(QLabel):
+    clicked = Signal(QPoint)
+
+    def __init__(self, txt):
+        super().__init__(txt)
+        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.setStyleSheet("""
+            QLabel{ border-radius: 5px; }
+            QLabel:hover{ background-color: #d4d2d2; }
+        """)
+
+    def mousePressEvent(self, ev):
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self.mapToParent(ev.pos()))
+
+class AddressBar(QWidget):
+    directoryClicked = Signal(str)  # New signal
+
+    def __init__(self):
+        super().__init__()
+
+        # self.setContentsMargins(0, 0, 0, 0)
+        self.setAttribute(Qt.WA_StyledBackground, True)
+        
+        self.setObjectName("main_frame")
+        self.setStyleSheet("""
+            QWidget#main_frame { border: 1px grey;
+                                border-radius: 2px;
+                                background-color: white;}
+        """)
+
+        self.sub_layout = QHBoxLayout()
+        self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.sub_layout.setContentsMargins(5, 2, 5, 2)
+        self.setLayout(self.sub_layout)
+
+    def stripAddressBar(self):
+        # Remove all widgets and spacer items from the sub-layout
+        for i in reversed(range(self.sub_layout.count())):
+            item = self.sub_layout.itemAt(i)
+            if item.widget():
+                item.widget().deleteLater()
+            else:
+                pass
+
+    def get_dirlabels_width(self):
+        width = 0
+        for i in range(self.sub_layout.count()):
+            item = self.sub_layout.itemAt(i)
+            width += item.geometry().width()
+        return width
+
+    def updateAddressBar(self, path: pathlib.PurePath):
+        # Remove any existing content from the address bar
+        self.stripAddressBar()
+
+        self.path_parts = path.parts
+        self.displayed_parts = list(self.path_parts)
+        for i, part in enumerate(self.displayed_parts):
+            if "\\" in part:
+                slashindex = part.find("\\")
+                self.displayed_parts[i] = part[0:slashindex]
+
+        self.sub_dir_labels = []
+
+        # Add a QLabel widget for each subdirectory and a separator after each one
+        for i, name in enumerate(self.displayed_parts):
+            sub_dir_l = AddressBarLabel(name)
+
+            self.sub_dir_labels.append(sub_dir_l)
+            sub_dir_l.clicked.connect(self.onSubDirectoryClicked)
+            self.sub_layout.addWidget(sub_dir_l)
+
+            if i < len(self.path_parts) - 1:
+                sep = QLabel("/")
+                self.sub_layout.addWidget(sep)
+
+        self.sub_dir_labels[-1].setStyleSheet("font-weight: bold")
+
+        self.sub_layout.setSpacing(0)
+        # if self.get_dirlabels_width() < self.sub_frame.geometry().width():
+        if self.get_dirlabels_width() < self.geometry().width():
+            self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
+        else:
+            self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+    def onSubDirectoryClicked(self,ev):
+        # labelItem = self.sub_frame.childAt(ev)
+        labelItem = self.childAt(ev)
+        index = int(self.sub_layout.indexOf(labelItem)/2)
+        new_directory_path = pathlib.PurePath(*self.path_parts[:index + 1])
+        if new_directory_path is not None:
+            self.updateAddressBar(new_directory_path)
+            self.directoryClicked.emit(str(new_directory_path))
+
+    def resizeEvent(self, event):
+      print("Widget resized to:", event.size())
 
 
 class FileFilterProxyModel(QSortFilterProxyModel):
@@ -134,19 +233,25 @@ class OWFileBrowser(widget.OWWidget):
         browse_layout = QHBoxLayout()
         layout.addLayout(browse_layout)
 
-        home_folder_button = gui.button(self, self, '', autoDefault=False)
-        home_folder_button.clicked.connect(lambda: self.jump_to_folder(initial_directory))
-        home_folder_button.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
-        browse_layout.addWidget(home_folder_button)
+        # home_folder_button = gui.button(self, self, '', autoDefault=False)
+        # home_folder_button.clicked.connect(lambda: self.jump_to_folder(initial_directory))
+        # home_folder_button.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
+        # browse_layout.addWidget(home_folder_button)
+        size = 30
+        self.adr_bar = AddressBar()
+        self.adr_bar.setMinimumSize(QSize(100, size))
+        self.adr_bar.setSizePolicy(Policy.Expanding, Policy.Fixed)
+        self.adr_bar.updateAddressBar(pathlib.PurePath(initial_directory))
+        self.adr_bar.directoryClicked.connect(self.jump_to_folder)
+        browse_layout.addWidget(self.adr_bar)
 
-        folder_up_button = gui.button(self, self, '', callback=self.folder_jump_up, autoDefault=False)
-        folder_up_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp))
-        browse_layout.addWidget(folder_up_button)
+        # folder_up_button = gui.button(self, self, '', callback=self.folder_jump_up, autoDefault=False)
+        # folder_up_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp))
+        # browse_layout.addWidget(folder_up_button)
 
         browse_button = gui.button(self, self, ' ... ', callback=self.browse_folder, autoDefault=False)
-        browse_button.setIcon(self.style().standardIcon(QStyle.SP_DirOpenIcon))
         browse_layout.addWidget(browse_button)
-        browse_layout.addStretch()
+        # browse_layout.addStretch()
 
         if fixed_reader is False:
             box = gui.hBox(None, addToLayout=False, margin=0)
@@ -193,16 +298,16 @@ class OWFileBrowser(widget.OWWidget):
         self.warnings = gui.widgetLabel(box, '')
 
     def browse_folder(self):
-        fname = QFileDialog.getExistingDirectory(self)
+        fname = QFileDialog(self,"Select folder",self.selected_folder).getExistingDirectory()
         if fname:
-            self.selected_folder = fname
-            self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
+            self.jump_to_folder(fname)
 
     def folder_jump_up(self):
         self.jump_to_folder(os.path.abspath(os.path.dirname(self.selected_folder)))
 
     def jump_to_folder(self,folder):
         self.selected_folder = folder
+        self.adr_bar.updateAddressBar(pathlib.PurePath(folder))
         self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
     
     def filter_files(self):
@@ -232,8 +337,8 @@ class OWFileBrowser(widget.OWWidget):
         indexItem = self.fileSystemModel.index(source_index.row(), 0, source_index.parent())
 
         if self.proxy_model.sourceModel().isDir(source_index):
-            self.selected_folder = self.fileSystemModel.filePath(indexItem)
-            self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
+            self.jump_to_folder(self.fileSystemModel.filePath(indexItem))
+            # self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
 
     def _try_load(self):
 
