@@ -30,25 +30,39 @@ log = logging.getLogger(__name__)
 class AddressBarLabel(QLabel):
     clicked = Signal(QPoint)
 
-    def __init__(self, txt):
-        super().__init__(txt)
+    def __init__(self, txt, interact=True):
+        self.interaction_allowed = interact
+        super().__init__(f" {txt} ")
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setStyleSheet("""
-            QLabel{ border-radius: 5px; }
-            QLabel:hover{ background-color: #d4d2d2; }
-        """)
+
+        if self.interaction_allowed==True:
+            self.setStyleSheet("""
+                QLabel{ border-radius: 5px; }
+                QLabel:hover{ background-color: #d4d2d2; }
+            """)
+
+        self.setSizePolicy(Policy.Preferred,Policy.Preferred)
+        width = self.fontMetrics().boundingRect(self.text()).width()
+        # width = self.fontMetrics().width(self.text())
+        self.setFixedWidth(width)
+
+    def setToBold(self):
+        self.setStyleSheet("font-weight: bold")
+        width = self.fontMetrics().width(self.text())
+        width = int(1.2*width)
+        self.setFixedWidth(width)
 
     def mousePressEvent(self, ev):
-        if ev.button() == Qt.MouseButton.LeftButton:
-            self.clicked.emit(self.mapToParent(ev.pos()))
+        if self.interaction_allowed:
+            if ev.button() == Qt.MouseButton.LeftButton:
+                self.clicked.emit(self.mapToParent(ev.pos()))
 
 class AddressBar(QWidget):
-    directoryClicked = Signal(str)  # New signal
+    directoryClicked = Signal(str)
 
     def __init__(self):
         super().__init__()
 
-        # self.setContentsMargins(0, 0, 0, 0)
         self.setAttribute(Qt.WA_StyledBackground, True)
         
         self.setObjectName("main_frame")
@@ -58,25 +72,51 @@ class AddressBar(QWidget):
                                 background-color: white;}
         """)
 
+        self.layout = QHBoxLayout()
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+        # Create the sub-layout for the address bar
+        self.sub_frame = QWidget()
         self.sub_layout = QHBoxLayout()
         self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.sub_layout.setContentsMargins(5, 2, 5, 2)
-        self.setLayout(self.sub_layout)
+        self.sub_frame.setLayout(self.sub_layout)
+
+        self.layout.addWidget(self.sub_frame)
+        # self.layout.addStretch()
+        self.setLayout(self.layout)
+
 
     def stripAddressBar(self):
         # Remove all widgets and spacer items from the sub-layout
         for i in reversed(range(self.sub_layout.count())):
             item = self.sub_layout.itemAt(i)
-            if item.widget():
+            if item.widget().isHidden():
+                item.widget().setVisible(True)
+
+            if item:
                 item.widget().deleteLater()
+                self.sub_layout.removeItem(item)
             else:
                 pass
+            print("Number of widgets:",self.sub_layout.count())
+    
+    def set_required_width(self):
+        width = self.get_required_width()
+        self.sub_frame.setFixedWidth(width + 10)
+        print("Width was set to:", width)
+        return width
 
-    def get_dirlabels_width(self):
+    def get_required_width(self):
         width = 0
         for i in range(self.sub_layout.count()):
             item = self.sub_layout.itemAt(i)
-            width += item.geometry().width()
+            if item.widget().isHidden():
+                pass
+            else:
+                width = width + item.geometry().width()
+                
         return width
 
     def updateAddressBar(self, path: pathlib.PurePath):
@@ -90,41 +130,67 @@ class AddressBar(QWidget):
                 slashindex = part.find("\\")
                 self.displayed_parts[i] = part[0:slashindex]
 
-        self.sub_dir_labels = []
-
         # Add a QLabel widget for each subdirectory and a separator after each one
+        ddd = AddressBarLabel("...",interact=False)
+        self.sub_layout.addWidget(ddd)
+        self.sub_layout.itemAt(0).widget().hide()
+
         for i, name in enumerate(self.displayed_parts):
             sub_dir_l = AddressBarLabel(name)
-
-            self.sub_dir_labels.append(sub_dir_l)
             sub_dir_l.clicked.connect(self.onSubDirectoryClicked)
             self.sub_layout.addWidget(sub_dir_l)
 
             if i < len(self.path_parts) - 1:
-                sep = QLabel("/")
+                sep = AddressBarLabel("/",interact=False)
                 self.sub_layout.addWidget(sep)
 
-        self.sub_dir_labels[-1].setStyleSheet("font-weight: bold")
+        for i in range(self.sub_layout.count()-1):
+            self.sub_layout.itemAt(i+1).widget().setVisible(True)
 
         self.sub_layout.setSpacing(0)
-        # if self.get_dirlabels_width() < self.sub_frame.geometry().width():
-        if self.get_dirlabels_width() < self.geometry().width():
-            self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignRight)
-        else:
-            self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        self.set_required_width()
+        while self.geometry().width() < self.get_required_width():
+            self.resizeToFit(self.geometry().width())        
 
     def onSubDirectoryClicked(self,ev):
-        # labelItem = self.sub_frame.childAt(ev)
         labelItem = self.childAt(ev)
-        index = int(self.sub_layout.indexOf(labelItem)/2)
-        new_directory_path = pathlib.PurePath(*self.path_parts[:index + 1])
+        index = int((self.sub_layout.indexOf(labelItem)-1)/2)
+        new_directory_path = pathlib.PurePath(*self.path_parts[0:index + 1])
         if new_directory_path is not None:
             self.updateAddressBar(new_directory_path)
             self.directoryClicked.emit(str(new_directory_path))
 
-    def resizeEvent(self, event):
-      print("Widget resized to:", event.size())
+    def resizeToFit(self,maxsize):
+        if maxsize < self.sub_frame.geometry().width():
+            self.sub_layout.itemAt(0).widget().show()
+            idx = 1
+            while self.sub_layout.itemAt(idx).widget().isHidden():
+                idx += 1
+            if idx == self.sub_layout.count()-1 or idx == self.sub_layout.count()-2:
+                pass
+            else:
+                self.sub_layout.itemAt(idx).widget().hide()
+                self.set_required_width()
+        else:
+            idx = 2
+            while self.sub_layout.itemAt(idx).widget().isHidden():
+                idx += 1
+            idx = idx - 1
 
+            if idx == 1:
+                self.sub_layout.itemAt(0).widget().hide()
+                width_needed = self.get_required_width() + self.sub_layout.itemAt(idx).geometry().width() + 10
+            else:
+                width_needed = self.get_required_width() + self.sub_layout.itemAt(idx).geometry().width() + 10
+
+            if maxsize > width_needed:
+                self.sub_layout.itemAt(idx).widget().show()
+                self.sub_frame.setFixedWidth(width_needed)
+
+
+    def resizeEvent(self, event):
+        self.resizeToFit(event.size().width())
+        
 
 class FileFilterProxyModel(QSortFilterProxyModel):
     def __init__(self, parent=None):
@@ -307,7 +373,6 @@ class OWFileBrowser(widget.OWWidget):
 
     def jump_to_folder(self,folder):
         self.selected_folder = folder
-        self.adr_bar.updateAddressBar(pathlib.PurePath(folder))
         self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
     
     def filter_files(self):
@@ -338,6 +403,7 @@ class OWFileBrowser(widget.OWWidget):
 
         if self.proxy_model.sourceModel().isDir(source_index):
             self.jump_to_folder(self.fileSystemModel.filePath(indexItem))
+            self.adr_bar.updateAddressBar(pathlib.PurePath(self.selected_folder))
             # self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
 
     def _try_load(self):
