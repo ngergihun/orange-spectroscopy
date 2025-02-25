@@ -40,7 +40,7 @@ class AddressBarLabel(QLabel):
                 QLabel{ border-radius: 5px; }
                 QLabel:hover{ background-color: #d4d2d2; }
             """)
-
+        
         self.setSizePolicy(Policy.Preferred,Policy.Preferred)
         width = self.fontMetrics().boundingRect(self.text()).width()
         # width = self.fontMetrics().width(self.text())
@@ -67,8 +67,8 @@ class AddressBar(QWidget):
         
         self.setObjectName("main_frame")
         self.setStyleSheet("""
-            QWidget#main_frame { border: 1px grey;
-                                border-radius: 2px;
+            QWidget#main_frame { border: 2px grey;
+                                border-radius: 5px;
                                 background-color: white;}
         """)
 
@@ -82,6 +82,11 @@ class AddressBar(QWidget):
         self.sub_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.sub_layout.setContentsMargins(5, 2, 5, 2)
         self.sub_frame.setLayout(self.sub_layout)
+        self.sub_frame.setObjectName("sub_frame")
+        self.sub_frame.setStyleSheet("""
+            QWidget#sub_frame { border-radius: 5px;
+                                background-color: white;}
+        """)
 
         self.layout.addWidget(self.sub_frame)
         # self.layout.addStretch()
@@ -100,12 +105,10 @@ class AddressBar(QWidget):
                 self.sub_layout.removeItem(item)
             else:
                 pass
-            print("Number of widgets:",self.sub_layout.count())
-    
+
     def set_required_width(self):
         width = self.get_required_width()
         self.sub_frame.setFixedWidth(width + 10)
-        print("Width was set to:", width)
         return width
 
     def get_required_width(self):
@@ -337,6 +340,7 @@ class OWFileBrowser(widget.OWWidget):
 
         self.treeview = QTreeView(self)
         layout.addWidget(self.treeview)
+        self.treeview.setSizePolicy(Policy.Expanding, Policy.Expanding)
 
         # Source model
         self.fileSystemModel = QFileSystemModel()
@@ -367,6 +371,7 @@ class OWFileBrowser(widget.OWWidget):
         fname = QFileDialog(self,"Select folder",self.selected_folder).getExistingDirectory()
         if fname:
             self.jump_to_folder(fname)
+            self.adr_bar.updateAddressBar(pathlib.PurePath(self.selected_folder))
 
     def folder_jump_up(self):
         self.jump_to_folder(os.path.abspath(os.path.dirname(self.selected_folder)))
