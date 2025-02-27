@@ -238,6 +238,8 @@ class OWFileBrowser(widget.OWWidget):
                       doc="Attribute-valued dataset read from the input file.")
         
     want_main_area = False
+    fixed_reader = False
+    reader_description = None
 
     SIZE_LIMIT = 1e7
 
@@ -268,8 +270,9 @@ class OWFileBrowser(widget.OWWidget):
         self.data = None
         self.reader = None
         self.auto_reader = False
-
-        if fixed_reader == True:
+        self.fixed_reader = fixed_reader
+        
+        if self.fixed_reader == True:
             self.reader_description = reader_description
             self.reader = self.get_described_reader()
         else:
@@ -322,7 +325,7 @@ class OWFileBrowser(widget.OWWidget):
         browse_layout.addWidget(browse_button)
         # browse_layout.addStretch()
 
-        if fixed_reader is False:
+        if fixed_reader == False:
             box = gui.hBox(None, addToLayout=False, margin=0)
             box.setSizePolicy(Policy.Expanding, Policy.Fixed)
             self.reader_combo = QComboBox(self)
@@ -332,6 +335,7 @@ class OWFileBrowser(widget.OWWidget):
             box.layout().addWidget(self.reader_combo)
             layout.addWidget(box)
             self._initialize_reader_combo()
+            print("Do I run?")
 
         self.filter_input = QLineEdit(self)
         self.filter_input.setPlaceholderText("Enter a string to filter files...")
