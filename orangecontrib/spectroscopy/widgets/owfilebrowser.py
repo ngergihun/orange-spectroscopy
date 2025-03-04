@@ -3,6 +3,7 @@ import re
 import logging
 from warnings import catch_warnings
 import pathlib
+from fnmatch import fnmatch
 
 from AnyQt.QtWidgets import \
     QStyle, QVBoxLayout, QHBoxLayout, QVBoxLayout, QFileDialog, QFileSystemModel, QScrollArea, QLabel, QWidget, QFrame,\
@@ -238,8 +239,6 @@ class OWFileBrowser(widget.OWWidget):
                       doc="Attribute-valued dataset read from the input file.")
         
     want_main_area = False
-    fixed_reader = False
-    reader_description = None
 
     SIZE_LIMIT = 1e7
 
@@ -263,35 +262,35 @@ class OWFileBrowser(widget.OWWidget):
     class NoFileSelected:
         pass
     
-    def __init__(self,fixed_reader=False,reader_description="NeaSPEC single image"):
+    def __init__(self):
         super().__init__()
 
         self.domain = None
         self.data = None
         self.reader = None
         self.auto_reader = False
-        self.fixed_reader = fixed_reader
+        # self.fixed_reader = False
+        # self.reader_description = ["NeaSPEC single image","NeaSPEC"]
         
-        if self.fixed_reader == True:
-            self.reader_description = reader_description
-            self.reader = self.get_described_reader()
-        else:
-            readers = [f for f in FileFormat.formats
-                   if getattr(f, 'read', None)
-                   and getattr(f, "EXTENSIONS", None)]
-            
-            def group_readers_per_addon_key(w):
-                # readers from Orange.data.io should go first
-                def package(w):
-                    package = w.qualified_name().split(".")[:-1]
-                    package = package[:2]
-                    if ".".join(package) == "Orange.data":
-                        return ["0"]  # force "Orange" to come first
-                    return package
-                return package(w), w.DESCRIPTION
+        # if self.fixed_reader == True:
+        #     self.reader = self.get_described_reader()
+        # else:
+        readers = [f for f in FileFormat.formats
+                if getattr(f, 'read', None)
+                and getattr(f, "EXTENSIONS", None)]
+        
+        def group_readers_per_addon_key(w):
+            # readers from Orange.data.io should go first
+            def package(w):
+                package = w.qualified_name().split(".")[:-1]
+                package = package[:2]
+                if ".".join(package) == "Orange.data":
+                    return ["0"]  # force "Orange" to come first
+                return package
+            return package(w), w.DESCRIPTION
 
-            self.available_readers = sorted(set(readers),
-                                        key=group_readers_per_addon_key)
+        self.available_readers = sorted(set(readers),
+                                    key=group_readers_per_addon_key)
 
         initial_directory = os.getcwd()
         self.selected_folder = initial_directory
@@ -325,17 +324,17 @@ class OWFileBrowser(widget.OWWidget):
         browse_layout.addWidget(browse_button)
         # browse_layout.addStretch()
 
-        if fixed_reader == False:
-            box = gui.hBox(None, addToLayout=False, margin=0)
-            box.setSizePolicy(Policy.Expanding, Policy.Fixed)
-            self.reader_combo = QComboBox(self)
-            self.reader_combo.setSizePolicy(Policy.Expanding, Policy.Fixed)
-            self.reader_combo.setMinimumSize(QSize(100, 1))
-            self.reader_combo.activated[int].connect(self.select_reader)
-            box.layout().addWidget(self.reader_combo)
-            layout.addWidget(box)
-            self._initialize_reader_combo()
-            print("Do I run?")
+        # if fixed_reader == False:
+        box = gui.hBox(None, addToLayout=False, margin=0)
+        box.setSizePolicy(Policy.Expanding, Policy.Fixed)
+        self.reader_combo = QComboBox(self)
+        self.reader_combo.setSizePolicy(Policy.Expanding, Policy.Fixed)
+        self.reader_combo.setMinimumSize(QSize(100, 1))
+        self.reader_combo.activated[int].connect(self.select_reader)
+        box.layout().addWidget(self.reader_combo)
+        layout.addWidget(box)
+        self._initialize_reader_combo()
+        # print("Do I run?")
 
         self.filter_input = QLineEdit(self)
         self.filter_input.setPlaceholderText("Enter a string to filter files...")
@@ -367,9 +366,19 @@ class OWFileBrowser(widget.OWWidget):
         self.treeview.header().setStretchLastSection(False)
         self.treeview.header().setSectionResizeMode(QHeaderView.ResizeToContents)
 
-        box = gui.vBox(self.controlArea, "Info")
-        self.infolabel = gui.widgetLabel(box, 'No data loaded.')
-        self.warnings = gui.widgetLabel(box, '')
+        self.info_box = gui.vBox(self.controlArea, "Info")
+        self.infolabel = gui.widgetLabel(self.info_box, 'No data loaded.')
+        self.warnings = gui.widgetLabel(self.info_box, '')
+
+    def set_fixed_readers(self,reader_description:list):
+        self.available_readers = [self.get_described_reader(r) for r in reader_description]
+        self._initialize_reader_combo()
+
+    def toggle_infobox(self):
+        if self.info_box.isHidden():
+            self.info_box.setHidden(False)
+        else:
+            self.info_box.setHidden(True)
 
     def browse_folder(self):
         fname = QFileDialog(self,"Select folder",self.selected_folder).getExistingDirectory()
@@ -415,6 +424,15 @@ class OWFileBrowser(widget.OWWidget):
             self.adr_bar.updateAddressBar(pathlib.PurePath(self.selected_folder))
             # self.treeview.setRootIndex(self.proxy_model.mapFromSource(self.fileSystemModel.index(self.selected_folder)))
 
+    def auto_get_reader(self,filename):
+        filename = pathlib.PurePath(filename)
+        for reader in self.available_readers:
+            if filename.suffix in reader.EXTENSIONS:
+                # print("Reader found:" + reader.DESCRIPTION)
+                return reader
+
+        raise MissingReaderException('No readers for file "{}"'.format(filename))
+    
     def _try_load(self):
 
         self.clear_messages()
@@ -425,9 +443,11 @@ class OWFileBrowser(widget.OWWidget):
         if self.auto_reader: # if no reader is specified than try autofind it based of file extension
             try:
                 self.reader_combo.setCurrentIndex(0)
-                reader = FileFormat.get_reader(self.filepath)
+                # reader = FileFormat.get_reader(self.filepath)
+                reader = self.auto_get_reader(self.filepath)
                 qname = reader.qualified_name()
                 self.reader = class_from_qualified_name(qname)
+                # self.reader = self.auto_get_reader(self.filepath)
             except:
                 return self.Error.missing_reader
             
@@ -460,7 +480,7 @@ class OWFileBrowser(widget.OWWidget):
         return None
     
 ########## GET THE READERS ##########
-    def get_described_reader(self):
+    def get_described_reader(self,description):
         """Return reader instance that reads the file given by the read description.
 
         Parameters
@@ -471,14 +491,15 @@ class OWFileBrowser(widget.OWWidget):
         -------
         FileFormat
         """
+        print(description)
         try:
             reader = [f for f in FileFormat.formats
-                    if getattr(f, "DESCRIPTION", None) == self.reader_description and getattr(f, "EXTENSIONS", None)]
+                    if getattr(f, "DESCRIPTION", None) == description and getattr(f, "EXTENSIONS", None)]
             qname = reader[0].qualified_name()
             reader_class = class_from_qualified_name(qname)
             return reader_class
         except:
-            raise IOError(f'No readers for {self.reader_description} files.')
+            raise IOError(f'No readers for {description} files.')
 
     def select_reader(self, n):
         if n == 0:  # default
