@@ -240,7 +240,7 @@ class OWFileBrowser(widget.OWWidget):
         
     want_main_area = False
 
-    SIZE_LIMIT = 1e7
+    SIZE_LIMIT = 1e9
 
     settingsHandler = PerfectDomainContextHandler(
         match_values=PerfectDomainContextHandler.MATCH_VALUES_ALL
@@ -269,12 +269,8 @@ class OWFileBrowser(widget.OWWidget):
         self.data = None
         self.reader = None
         self.auto_reader = False
-        # self.fixed_reader = False
-        # self.reader_description = ["NeaSPEC single image","NeaSPEC"]
+        self.sheet = None
         
-        # if self.fixed_reader == True:
-        #     self.reader = self.get_described_reader()
-        # else:
         readers = [f for f in FileFormat.formats
                 if getattr(f, 'read', None)
                 and getattr(f, "EXTENSIONS", None)]
@@ -304,10 +300,6 @@ class OWFileBrowser(widget.OWWidget):
         browse_layout = QHBoxLayout()
         layout.addLayout(browse_layout)
 
-        # home_folder_button = gui.button(self, self, '', autoDefault=False)
-        # home_folder_button.clicked.connect(lambda: self.jump_to_folder(initial_directory))
-        # home_folder_button.setIcon(self.style().standardIcon(QStyle.SP_DirHomeIcon))
-        # browse_layout.addWidget(home_folder_button)
         size = 30
         self.adr_bar = AddressBar()
         self.adr_bar.setMinimumSize(QSize(100, size))
@@ -316,15 +308,9 @@ class OWFileBrowser(widget.OWWidget):
         self.adr_bar.directoryClicked.connect(self.jump_to_folder)
         browse_layout.addWidget(self.adr_bar)
 
-        # folder_up_button = gui.button(self, self, '', callback=self.folder_jump_up, autoDefault=False)
-        # folder_up_button.setIcon(self.style().standardIcon(QStyle.SP_ArrowUp))
-        # browse_layout.addWidget(folder_up_button)
-
         browse_button = gui.button(self, self, ' ... ', callback=self.browse_folder, autoDefault=False)
         browse_layout.addWidget(browse_button)
-        # browse_layout.addStretch()
 
-        # if fixed_reader == False:
         box = gui.hBox(None, addToLayout=False, margin=0)
         box.setSizePolicy(Policy.Expanding, Policy.Fixed)
         self.reader_combo = QComboBox(self)
@@ -334,7 +320,22 @@ class OWFileBrowser(widget.OWWidget):
         box.layout().addWidget(self.reader_combo)
         layout.addWidget(box)
         self._initialize_reader_combo()
-        # print("Do I run?")
+
+        self.sheet_box = gui.hBox(None, addToLayout=False, margin=0)
+        self.sheet_combo = QComboBox()
+        self.sheet_combo.textActivated.connect(self.select_sheet)
+        self.sheet_combo.setSizePolicy(Policy.Expanding, Policy.Fixed)
+        self.sheet_combo.setMinimumSize(QSize(50, 1))
+        self.sheet_label = QLabel()
+        self.sheet_label.setText('Sheet')
+        self.sheet_label.setSizePolicy(
+            Policy.MinimumExpanding, Policy.Fixed)
+        self.sheet_box.layout().addWidget(
+            self.sheet_label, Qt.AlignLeft)
+        self.sheet_box.layout().addWidget(
+            self.sheet_combo, Qt.AlignVCenter)
+        layout.addWidget(self.sheet_box)
+        self.sheet_box.hide()
 
         self.filter_input = QLineEdit(self)
         self.filter_input.setPlaceholderText("Enter a string to filter files...")
@@ -406,11 +407,13 @@ class OWFileBrowser(widget.OWWidget):
         source_index = self.proxy_model.mapToSource(idx)
         indexItem = self.fileSystemModel.index(source_index.row(), 0, source_index.parent())
         self.filepath = self.fileSystemModel.filePath(indexItem)
+
         if not self.fileSystemModel.isDir(indexItem):
             error = self._try_load()
             if error:
                 error()
                 self.data = None
+                self.sheet_box.hide()
                 self.Outputs.data.send(None)
                 self.infolabel.setText("No data.")
 
@@ -452,15 +455,18 @@ class OWFileBrowser(widget.OWWidget):
                 return self.Error.missing_reader
             
         if os.path.splitext(self.filepath)[1] in self.reader.EXTENSIONS:
-           reader = self.reader(self.filepath)
+           self.reader_obj = self.reader(self.filepath)
 
-        if reader is self.NoFileSelected:
+        if self.reader_obj is self.NoFileSelected:
             self.Outputs.data.send(None)
             return None
+        
+        if self.sheet:
+            self.reader_obj.select_sheet(self.sheet)
 
         with catch_warnings(record=True) as warnings:
             try:
-                data = reader.read()
+                data = self.reader_obj.read()
             except Exception as ex:
                 log.exception(ex)
                 return lambda x=ex: self.Error.unknown(str(x))
@@ -469,6 +475,11 @@ class OWFileBrowser(widget.OWWidget):
 
         if os.path.getsize(self.filepath) > self.SIZE_LIMIT:
                 return self.Warning.file_too_big
+
+        try:
+            self._update_sheet_combo()
+        except Exception:
+            return self.Error.sheet_error
 
         self.infolabel.setText(self._describe(data))
 
@@ -491,7 +502,7 @@ class OWFileBrowser(widget.OWWidget):
         -------
         FileFormat
         """
-        print(description)
+        # print(description)
         try:
             reader = [f for f in FileFormat.formats
                     if getattr(f, "DESCRIPTION", None) == description and getattr(f, "EXTENSIONS", None)]
@@ -504,16 +515,43 @@ class OWFileBrowser(widget.OWWidget):
     def select_reader(self, n):
         if n == 0:  # default
             self.auto_reader = True
+            self.load_selected_file()
         elif n <= len(self.available_readers):
             self.auto_reader = False
             self.reader = self.available_readers[n - 1]
+            self.load_selected_file()
         else:  # the rest include just qualified names
             self.auto_reader = False
             reader = self.reader_combo.itemText(n)
             qname = reader[0].qualified_name()
             self.reader = class_from_qualified_name(qname)
+            self.load_selected_file()
 
         self.filter_files()
+
+    def select_sheet(self):
+        self.sheet = self.sheet_combo.currentText()
+        self.load_selected_file()
+
+    def _update_sheet_combo(self):
+        if len(self.reader_obj.sheets) < 2:
+            self.sheet_box.hide()
+            self.reader_obj.select_sheet(None)
+            return
+
+        self.sheet_combo.clear()
+        self.sheet_combo.addItems(self.reader_obj.sheets)
+        self._select_active_sheet()
+        self.sheet_box.show()
+
+    def _select_active_sheet(self):
+        try:
+            idx = self.reader_obj.sheets.index(self.reader_obj.sheet)
+            self.sheet_combo.setCurrentIndex(idx)
+        except ValueError:
+            # Requested sheet does not exist in this file
+            self.reader_obj.select_sheet(None)
+            self.sheet_combo.setCurrentIndex(0)
 
     def _initialize_reader_combo(self):
         self.reader_combo.clear()
