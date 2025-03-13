@@ -11,14 +11,14 @@ from orangecontrib.spectroscopy.io.gsf import reader_gsf
 from orangecontrib.spectroscopy.io.util import SpectralFileFormat, _spectra_from_image
 from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
 
-class NeaReader(FileFormat, SpectralFileFormat):
+from pySNOM import readers
 
+class NeaReader(FileFormat, SpectralFileFormat):
     EXTENSIONS = (".nea", ".txt")
-    DESCRIPTION = 'NeaSPEC'
+    DESCRIPTION = "NeaSPEC"
 
     def read_v1(self):
-
-        with open(self.filename, "rt", encoding="utf8") as f:
+        with open(self.filename, encoding="utf8") as f:
             next(f)  # skip header
             l = next(f)
             l = l.strip()
@@ -33,10 +33,14 @@ class NeaReader(FileFormat, SpectralFileFormat):
             f.seek(0)
             next(f)
             metacols = np.arange(0, 4)
-            meta = np.loadtxt(f,
-                              dtype={'names': ('row', 'column', 'run', 'channel'),
-                                     'formats': (int, int, int, "S10")},
-                              usecols=metacols)
+            meta = np.loadtxt(
+                f,
+                dtype={
+                    "names": ("row", "column", "run", "channel"),
+                    "formats": (int, int, int, "S10"),
+                },
+                usecols=metacols,
+            )
 
             # ASSUMTION: runs start with 0
             runs = np.unique(meta["run"])
@@ -57,7 +61,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
             for a in channels:
                 if channel_type(a) in ("OA", "OP"):
                     maxn = max(maxn, int(a[1:-1]))
-            numharmonics = maxn+1
+            numharmonics = maxn + 1
 
             rowcols = np.vstack((meta["row"], meta["column"])).T
             uniquerc = set(map(tuple, rowcols))
@@ -68,10 +72,13 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
             for i, (row, col, run, chan) in enumerate(meta):
                 if (row, col) not in di:
-                    di[(row, col)] = \
-                        {"M": np.zeros((len(runs), len(datacols))) * np.nan,
-                         "OA": np.zeros((numharmonics, len(runs), len(datacols))) * np.nan,
-                         "OP": np.zeros((numharmonics, len(runs), len(datacols))) * np.nan}
+                    di[(row, col)] = {
+                        "M": np.zeros((len(runs), len(datacols))) * np.nan,
+                        "OA": np.zeros((numharmonics, len(runs), len(datacols)))
+                        * np.nan,
+                        "OP": np.zeros((numharmonics, len(runs), len(datacols)))
+                        * np.nan,
+                    }
                 if channel_type(chan) == "M":
                     di[(row, col)][channel_type(chan)][run] = data[i]
                     if min_intp is None:  # we need the limits of common X for all
@@ -109,38 +116,42 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
             final_data = np.vstack(final_data)
 
-            metas = [Orange.data.ContinuousVariable.make("row"),
-                     Orange.data.ContinuousVariable.make("column"),
-                     Orange.data.StringVariable.make("channel")]
+            metas = [
+                Orange.data.ContinuousVariable.make("row"),
+                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.StringVariable.make("channel"),
+            ]
 
             domain = Orange.data.Domain([], None, metas=metas)
-            meta_data = Table.from_numpy(domain, X=np.zeros((len(final_data), 0)),
-                                         metas=np.asarray(final_metas, dtype=object))
+            meta_data = Table.from_numpy(
+                domain,
+                X=np.zeros((len(final_data), 0)),
+                metas=np.asarray(final_metas, dtype=object),
+            )
             return X, final_data, meta_data
 
     def read_v2(self):
-
         # Find line in which data begins
         count = 0
-        with open(self.filename, "rt", encoding="utf8") as f:
+        with open(self.filename, encoding="utf8") as f:
             while f:
                 line = f.readline()
                 count = count + 1
-                if line[0] != '#':
+                if line[0] != "#":
                     break
 
             file = np.loadtxt(f)  # Slower part
 
         # Find the Wavenumber column
-        line = line.strip().split('\t')
+        line = line.strip().split("\t")
 
         for i, e in enumerate(line):
-            if e == 'Wavenumber':
+            if e == "Wavenumber":
                 index = i
                 break
 
         # Channel need to have exactly 3 letters
-        Channel = line[index + 1:]
+        Channel = line[index + 1 :]
         Channel = np.array(Channel)
         # Extract other data #
         Max_row = int(file[:, 0].max() + 1)
@@ -150,17 +161,19 @@ class NeaReader(FileFormat, SpectralFileFormat):
         N_cols = Max_omega
 
         # Transform Actual Data
-        M = np.full((int(N_rows), int(N_cols)), np.nan, dtype='float')
+        M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
 
         for j in range(int(Max_row * Max_col)):
-            row_value = file[j * (Max_omega):(j + 1) * (Max_omega), 0]
+            row_value = file[j * (Max_omega) : (j + 1) * (Max_omega), 0]
             assert np.all(row_value == row_value[0])
-            col_value = file[j * (Max_omega):(j + 1) * (Max_omega), 1]
+            col_value = file[j * (Max_omega) : (j + 1) * (Max_omega), 1]
             assert np.all(col_value == col_value[0])
             for k in range(Channel.size):
-                M[k + Channel.size * j, :] = file[j * (Max_omega):(j + 1) * (Max_omega), k + 4]
+                M[k + Channel.size * j, :] = file[
+                    j * (Max_omega) : (j + 1) * (Max_omega), k + 4
+                ]
 
-        Meta_data = np.zeros((int(N_rows), 3), dtype='object')
+        Meta_data = np.zeros((int(N_rows), 3), dtype="object")
 
         alpha = 0
         beta = 0
@@ -170,40 +183,199 @@ class NeaReader(FileFormat, SpectralFileFormat):
             if beta == Max_row:
                 beta = 0
                 alpha = alpha + 1
-            Meta_data[i:i + Ch_n, 2] = Channel
-            Meta_data[i:i + Ch_n, 1] = alpha
-            Meta_data[i:i + Ch_n, 0] = beta
+            Meta_data[i : i + Ch_n, 2] = Channel
+            Meta_data[i : i + Ch_n, 1] = alpha
+            Meta_data[i : i + Ch_n, 0] = beta
             beta = beta + 1
 
-        waveN = file[0:int(Max_omega), 3]
-        metas = [Orange.data.ContinuousVariable.make("row"),
-                 Orange.data.ContinuousVariable.make("column"),
-                 Orange.data.StringVariable.make("channel")]
+        waveN = file[0 : int(Max_omega), 3]
+        metas = [
+            Orange.data.ContinuousVariable.make("row"),
+            Orange.data.ContinuousVariable.make("column"),
+            Orange.data.StringVariable.make("channel"),
+        ]
 
         domain = Orange.data.Domain([], None, metas=metas)
-        meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)),
-                                     metas=Meta_data)
+        meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
         return waveN, M, meta_data
 
     def read_spectra(self):
         version = 1
-        with open(self.filename, "rt", encoding="utf8") as f:
-            if f.read(2) == '# ':
+        with open(self.filename, encoding="utf8") as f:
+            if f.read(2) == "# ":
                 version = 2
         if version == 1:
-            return self.read_v1()
+            return self.read_v2()
         else:
             return self.read_v2()
 
 
-class NeaReaderGSF(FileFormat, SpectralFileFormat):
+class NeaSpectralReader(FileFormat, SpectralFileFormat):
+    EXTENSIONS = (".txt",)
+    DESCRIPTION = "NeaSPEC spectrum and ifg files"
 
-    EXTENSIONS = (".gsf",)
-    DESCRIPTION = 'NeaSPEC raw files'
+    @property
+    def sheets(self):
+        data_reader = readers.NeaSpectrumGeneralReader(self.filename)
+        channels, _ = data_reader.read_header()
+        channels[-1] = "All"
+
+        return channels
 
     def read_spectra(self):
+        data_reader = readers.NeaSpectrumGeneralReader(self.filename)
+        data, measparams = data_reader.read()
 
-        file_channel = str(self.filename.split(' ')[-2]).strip()
+        if self.sheet:
+            chn = self.sheet
+        else:
+            chn = self.sheets[0]
+            self.sheet = chn
+
+        if chn == "All":
+            N_chn = len(self.sheets) - 1
+        else:
+            N_chn = 1
+
+        # Extract other data #
+        Max_row = int(measparams["PixelArea"][0])
+        Max_col = int(measparams["PixelArea"][1])
+
+        # For ifg files
+        if "Depth" in self.sheets:
+            Max_omega = int(np.max(data["Depth"]) + 1)
+        else:
+            Max_omega = int(np.max(data["Omega"]) + 1)
+
+        # IFG file if Run is amongst the channels
+        if "Run" in self.sheets:
+            Max_run = int(np.max(data["Run"]) + 1)
+        else:
+            Max_run = int(1)
+
+        N_rows = Max_row * Max_col * Max_run * N_chn
+        N_cols = Max_omega
+
+        angle = np.radians(measparams["Rotation"])
+        width = measparams["ScanArea"][0]
+        height = measparams["ScanArea"][1]
+        xoff = measparams["ScannerCenterPosition"][0]
+        yoff = measparams["ScannerCenterPosition"][1]
+        npointsx = measparams["PixelArea"][0]
+        npointsy = measparams["PixelArea"][1]
+
+        # Create the list of points cenetered to the origo
+        x = np.linspace(-width / 2, width / 2, npointsx)
+        y = np.linspace(-height / 2, height / 2, npointsy)
+
+        X,Y = np.meshgrid(x,y)
+
+        xvec = X.ravel()
+        yvec = Y.ravel()
+
+        xpos = []
+        ypos = []
+
+        c, s = np.cos(angle), np.sin(angle)
+        R = np.array(((c, -s), (s, c)))
+
+        for i in range(len(xvec)):
+            vec = np.array([xvec[i], yvec[i]])
+            vec = np.matmul(R, vec)
+            vec[0] += xoff
+            vec[1] += yoff
+            xpos.append(vec[0])
+            ypos.append(vec[1])
+
+        xpos = np.reshape(np.array(xpos),(npointsy,npointsx))
+        ypos = np.reshape(np.array(ypos),(npointsy,npointsx))
+
+        # Transform Actual Data
+        M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
+
+        for jch in range(N_chn):
+
+            if chn == "All":
+                rawdata = data[self.sheets[jch]]
+            else:
+                rawdata = data[chn]
+
+            for j in range(int(Max_row * Max_col)):
+                row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
+                assert np.all(row_value == row_value[0])
+                col_value = data["Column"][j * (Max_omega) : (j + 1) * (Max_omega)]
+                assert np.all(col_value == col_value[0])
+
+                all_runs = rawdata[
+                    j * (Max_run * Max_omega) : (j + 1) * (Max_run * Max_omega)
+                ]
+
+                for k in range(Max_run):
+                    M[k + Max_run * j + (Max_row * Max_col * Max_run * jch), :] = all_runs[
+                        k * (Max_omega) : (k + 1) * (Max_omega)
+                    ]
+
+        if "Run" in self.sheets:
+            Meta_data = np.zeros((int(N_rows), 4), dtype="object")
+        else:
+            Meta_data = np.zeros((int(N_rows), 3), dtype="object")
+
+        # if "Run" in self.sheets:
+        for jch in range(N_chn):
+            alpha = 0
+            beta = 0
+
+            for idx, i in enumerate(range(0, Max_row * Max_col * Max_run, Max_run)):
+                if beta == Max_row:
+                    beta = 0
+                    alpha = alpha + 1
+
+                if "Run" in self.sheets:
+                    if N_chn == 1:
+                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 3] = self.sheet
+                    else:
+                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 3] = self.sheets[jch]
+
+                    Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 2] = list(range(0, Max_run))
+                else:
+                    if N_chn == 1:
+                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 2] = self.sheet
+                    else:
+                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 2] = self.sheets[jch]
+
+                Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 1] = ypos[int(alpha),int(beta)]
+                Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 0] = xpos[int(alpha),int(beta)]
+                beta = beta + 1
+
+        if "Run" in self.sheets:
+            waveN = data["M"][0 : int(Max_omega)] * 1e6
+            metas = [
+                Orange.data.ContinuousVariable.make("row"),
+                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.ContinuousVariable.make("run"),
+                Orange.data.StringVariable.make("channel"),
+            ]
+        else:
+            waveN = data["Wavenumber"][0 : int(Max_omega)]
+            metas = [
+                Orange.data.ContinuousVariable.make("row"),
+                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.StringVariable.make("channel"),
+            ]
+
+        domain = Orange.data.Domain([], None, metas=metas)
+        meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
+        meta_data.attributes = measparams
+
+        return waveN, M, meta_data
+
+
+class NeaReaderGSF(FileFormat, SpectralFileFormat):
+    EXTENSIONS = (".gsf",)
+    DESCRIPTION = "NeaSPEC raw files"
+
+    def read_spectra(self):
+        file_channel = str(self.filename.split(" ")[-2]).strip()
         folder_file = str(self.filename.split(file_channel)[-2]).strip()
 
         channel_p = ""
@@ -233,37 +405,43 @@ class NeaReaderGSF(FileFormat, SpectralFileFormat):
             data_gsf_a, data_gsf_p, info, channel_a, channel_p
         )
 
-        metas = [Orange.data.ContinuousVariable.make("column"),
-                 Orange.data.ContinuousVariable.make("row"),
-                 Orange.data.ContinuousVariable.make("run"),
-                 Orange.data.StringVariable.make("channel")]
+        metas = [
+            Orange.data.ContinuousVariable.make("column"),
+            Orange.data.ContinuousVariable.make("row"),
+            Orange.data.ContinuousVariable.make("run"),
+            Orange.data.StringVariable.make("channel"),
+        ]
 
         domain = Orange.data.Domain([], None, metas=metas)
-        meta_data = Table.from_numpy(domain, X=np.zeros((len(final_data), 0)),
-                                     metas=np.asarray(final_metas, dtype=object))
+        meta_data = Table.from_numpy(
+            domain,
+            X=np.zeros((len(final_data), 0)),
+            metas=np.asarray(final_metas, dtype=object),
+        )
 
         meta_data.attributes = parameters
 
-        depth = np.arange(0, int(parameters['Pixel Area (X, Y, Z)'][3]))
+        depth = np.arange(0, int(parameters["Pixel Area (X, Y, Z)"][3]))
 
         return depth, final_data, meta_data
 
     def _format_file(self, gsf_a, gsf_p, parameters, channel_a, channel_p):
-
         info = {}
         for row in parameters:
-            key = row[0].strip(':')
+            key = row[0].strip(":")
             value = [v for v in row[1:] if len(v)]
             if len(value) == 1:
                 value = value[0]
             info.update({key: value})
 
-        info.update({'Reader': 'NeaReaderGSF'}) # key used in confirmation for complex fft calculation
+        info.update(
+            {"Reader": "NeaReaderGSF"}
+        )  # key used in confirmation for complex fft calculation
 
-        averaging = int(info['Averaging'])
-        px_x = int(info['Pixel Area (X, Y, Z)'][1])
-        px_y = int(info['Pixel Area (X, Y, Z)'][2])
-        px_z = int(info['Pixel Area (X, Y, Z)'][3])
+        averaging = int(info["Averaging"])
+        px_x = int(info["Pixel Area (X, Y, Z)"][1])
+        px_y = int(info["Pixel Area (X, Y, Z)"][2])
+        px_z = int(info["Pixel Area (X, Y, Z)"][3])
 
         data_complete = []
         final_metas = []
@@ -301,9 +479,7 @@ class NeaReaderGSF(FileFormat, SpectralFileFormat):
         return np.asarray(data_complete), info, final_metas
 
     def _html_reader(self, path):
-
         class HTMLTableParser(HTMLParser):
-
             def __init__(self):
                 super().__init__()
                 self._current_row = []
@@ -331,7 +507,7 @@ class NeaReaderGSF(FileFormat, SpectralFileFormat):
                     self._current_row.append(data.strip())
 
         p = HTMLTableParser()
-        with open(path, "rt", encoding="utf8") as f:
+        with open(path, encoding="utf8") as f:
             p.feed(f.read())
         return p.tables[0]
 
@@ -341,9 +517,8 @@ class NeaReaderGSF(FileFormat, SpectralFileFormat):
 
 
 class NeaImageGSF(FileFormat, SpectralFileFormat):
-
     EXTENSIONS = (".gsf",)
-    DESCRIPTION = 'NeaSPEC single image'
+    DESCRIPTION = "NeaSPEC single image"
 
     @staticmethod
     def detect_signal_type(filename):
@@ -369,7 +544,9 @@ class NeaImageGSF(FileFormat, SpectralFileFormat):
     def read_spectra(self):
 
         X, XRr, YRr = reader_gsf(self.filename)
-        features, final_data, meta_data = _spectra_from_image(X, np.array([1]), XRr, YRr)
+        features, final_data, meta_data = _spectra_from_image(
+            X, np.array([1]), XRr, YRr
+        )
 
         signal_type = self.detect_signal_type(self.filename)
 
@@ -424,13 +601,14 @@ class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
     def _read_table_data(fpath, header_length):
         # table header
         formatted_table_header = []
-        with open(fpath, "r", encoding="utf-8") as f:
+        with open(fpath, encoding="utf-8") as f:
             # the line containing the column headers is the first line after the metadata header
             table_header = f.readlines()[header_length]
             formatted_table_header = table_header.split("\t")
             formatted_table_header = [
                 header.strip() for header in formatted_table_header
             ]
+
         # reading the data
         df = pd.read_csv(
             fpath,
@@ -671,3 +849,7 @@ class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
         self.info["Channel Data Type"] = "Polar", "i.e. Amplitude and Phase separated"
         meta_data.attributes = self.info
         return scaled_domain, out_data, meta_data
+
+
+if __name__ == "__main__":
+    pass
