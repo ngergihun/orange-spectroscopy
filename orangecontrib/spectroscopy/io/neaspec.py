@@ -220,6 +220,8 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         channels, _ = data_reader.read_header()
         channels.append("All")
 
+        channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
+
         return channels
 
     def read_spectra(self):
@@ -242,13 +244,13 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         Max_col = int(measparams["PixelArea"][1])
 
         # For ifg files
-        if "Depth" in self.sheets:
+        if "Depth" in list(data.keys()):
             Max_omega = int(np.max(data["Depth"]) + 1)
         else:
             Max_omega = int(np.max(data["Omega"]) + 1)
 
         # IFG file if Run is amongst the channels
-        if "Run" in self.sheets:
+        if "Run" in list(data.keys()):
             Max_run = int(np.max(data["Run"]) + 1)
         else:
             Max_run = int(1)
@@ -315,7 +317,7 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
                         k * (Max_omega) : (k + 1) * (Max_omega)
                     ]
 
-        if "Run" in self.sheets:
+        if "Run" in list(data.keys()):
             Meta_data = np.zeros((int(N_rows), 4), dtype="object")
         else:
             Meta_data = np.zeros((int(N_rows), 3), dtype="object")
@@ -330,7 +332,7 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
                     beta = 0
                     alpha = alpha + 1
 
-                if "Run" in self.sheets:
+                if "Run" in list(data.keys()):
                     if N_chn == 1:
                         Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 3] = self.sheet
                     else:
@@ -347,7 +349,7 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
                 Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 0] = xpos[int(alpha),int(beta)]
                 beta = beta + 1
 
-        if "Run" in self.sheets:
+        if "Run" in list(data.keys()):
             waveN = data["M"][0 : int(Max_omega)] * 1e6
             metas = [
                 Orange.data.ContinuousVariable.make("row"),
