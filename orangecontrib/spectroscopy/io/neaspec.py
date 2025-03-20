@@ -218,7 +218,7 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
     def sheets(self):
         data_reader = readers.NeaSpectrumGeneralReader(self.filename)
         channels, _ = data_reader.read_header()
-        channels[-1] = "All"
+        channels.append("All")
 
         return channels
 
