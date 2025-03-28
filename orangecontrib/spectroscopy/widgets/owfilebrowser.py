@@ -10,7 +10,6 @@ from AnyQt.QtWidgets import (
     QHBoxLayout,
     QVBoxLayout,
     QFileDialog,
-    QFileSystemModel,
     QLabel,
     QWidget,
     QLineEdit,
@@ -19,6 +18,12 @@ from AnyQt.QtWidgets import (
     QHeaderView,
     QSizePolicy as Policy,
 )
+
+try:
+    from AnyQt.QtGui import QFileSystemModel
+except ImportError:
+    from AnyQt.QtWidgets import QFileSystemModel
+
 from AnyQt.QtCore import QSize, QDir, QPoint, Qt, Signal, QSortFilterProxyModel
 
 from orangewidget.utils.filedialogs import format_filter
