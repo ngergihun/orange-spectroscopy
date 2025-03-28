@@ -263,12 +263,10 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         height = measparams["ScanArea"][1]
         xoff = measparams["ScannerCenterPosition"][0]
         yoff = measparams["ScannerCenterPosition"][1]
-        npointsx = measparams["PixelArea"][0]
-        npointsy = measparams["PixelArea"][1]
 
         # Create the list of points cenetered to the origo
-        x = np.linspace(-width / 2, width / 2, npointsx)
-        y = np.linspace(-height / 2, height / 2, npointsy)
+        x = np.linspace(-width / 2, width / 2, Max_row)
+        y = np.linspace(-height / 2, height / 2, Max_col)
 
         X,Y = np.meshgrid(x,y)
 
@@ -289,8 +287,8 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
             xpos.append(vec[0])
             ypos.append(vec[1])
 
-        xpos = np.reshape(np.array(xpos),(npointsy,npointsx))
-        ypos = np.reshape(np.array(ypos),(npointsy,npointsx))
+        xpos = np.reshape(np.array(xpos),(Max_col,Max_row))
+        ypos = np.reshape(np.array(ypos),(Max_col,Max_row))
 
         # Transform Actual Data
         M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
