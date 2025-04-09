@@ -211,22 +211,30 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
 
 class NeaSpectralReader(FileFormat, SpectralFileFormat):
-    EXTENSIONS = (".txt",)
+    EXTENSIONS = (".nea",".txt",)
     DESCRIPTION = "NeaSPEC spectrum and ifg files"
 
     @property
     def sheets(self):
-        data_reader = readers.NeaHeaderReader(self.filename)
-        channels, _ = data_reader.read()
-        channels.append("All")
-
-        channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
+        if self.filename.endswith(".nea"):
+            data_reader = readers.NeaFileReader(self.filename)
+            data, _ = data_reader.read()
+            channels = list(data.keys())[3:]
+        else:
+            data_reader = readers.NeaHeaderReader(self.filename)
+            channels, _ = data_reader.read()
+            channels.append("All")
+            channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
 
         return channels
 
     def read_spectra(self):
-        data_reader = readers.NeaSpectralReader(self.filename)
-        data, measparams = data_reader.read()
+        if self.filename.endswith(".nea"):
+            data_reader = readers.NeaFileLegacyReader(self.filename)
+            data, measparams = data_reader.read()
+        else:
+            data_reader = readers.NeaSpectralReader(self.filename)
+            data, measparams = data_reader.read()
 
         if self.sheet:
             chn = self.sheet
