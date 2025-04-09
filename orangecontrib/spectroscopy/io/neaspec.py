@@ -216,8 +216,8 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
 
     @property
     def sheets(self):
-        data_reader = readers.NeaSpectrumGeneralReader(self.filename)
-        channels, _ = data_reader.read_header()
+        data_reader = readers.NeaHeaderReader(self.filename)
+        channels, _ = data_reader.read()
         channels.append("All")
 
         channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
@@ -225,7 +225,7 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         return channels
 
     def read_spectra(self):
-        data_reader = readers.NeaSpectrumGeneralReader(self.filename)
+        data_reader = readers.NeaSpectralReader(self.filename)
         data, measparams = data_reader.read()
 
         if self.sheet:
