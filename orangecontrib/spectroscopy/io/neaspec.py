@@ -12,6 +12,7 @@ from orangecontrib.spectroscopy.io.util import SpectralFileFormat, _spectra_from
 from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
 
 from pySNOM import readers
+from pathlib import PurePath
 
 class NeaReader(FileFormat, SpectralFileFormat):
     EXTENSIONS = (".nea", ".txt")
@@ -211,7 +212,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
 
 class NeaSpectralReader(FileFormat, SpectralFileFormat):
-    EXTENSIONS = (".nea",".txt",)
+    EXTENSIONS = (".nea",".txt",".gsf",)
     DESCRIPTION = "NeaSPEC spectrum and ifg files"
 
     @property
@@ -226,12 +227,52 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
             channels.append("All")
             channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
         else:
-            channels = None
+            channels = []
 
         return channels
+    
+    @staticmethod
+    def detect_image_signaltype(filename):
+
+        channel_strings = ['M(.?)A', 'M(.?)P', 'O(.?)A', 'O(.?)P', 'Z C', 'Z raw']
+        channel_name = None
+
+        for pattern in channel_strings:
+            if re.search(pattern, filename) is not None:
+                channel_name = re.search(pattern, filename)[0]
+
+        if channel_name is None:
+            signal_type = 'Topography'
+        elif 'P' in channel_name:
+            signal_type = "Phase"
+        elif 'A' in channel_name:
+            signal_type = "Amplitude"
+        else:
+            signal_type = "Topography"
+
+        return signal_type
+
 
     def read_spectra(self):
 
+        if self.filename.endswith(".gsf"):
+            # GSF neaspec image
+            wn = readers.get_wl_from_filename(self.filename)
+            if wn is None:
+                wn = readers.get_wl_from_infofile(self.filename)
+            if wn is None:
+                wn = 0.0
+
+            X, XRr, YRr = reader_gsf(self.filename)
+            features, final_data, meta_data = _spectra_from_image(
+                X, np.array([wn]), XRr, YRr
+            )
+            signal_type = self.detect_image_signaltype(self.filename)
+            meta_data.attributes["measurement.signaltype"] = signal_type
+
+            # TODO: add all the meta info here from the Gwyddion header
+            return features, final_data, meta_data
+        
         if self.filename.endswith(".nea"):
             data_reader = readers.NeaFileLegacyReader(self.filename)
             data, measparams = data_reader.read()
@@ -251,8 +292,8 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
             N_chn = 1
 
         # There are strored in the measparams
-        Max_row = int(measparams["PixelArea"][0])
-        Max_col = int(measparams["PixelArea"][1])
+        Max_row = int(np.max(data["Row"]) + 1)
+        Max_col = int(np.max(data["Column"]) + 1)
 
         # Run is only there for ifg files
         if "Run" in list(data.keys()):
@@ -339,12 +380,14 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
                         k * (Max_omega) : (k + 1) * (Max_omega)
                     ]
 
+        # Preparing metas
+        meta_cols = 3
         if "Run" in list(data.keys()):
-            Meta_data = np.zeros((int(N_rows), 4), dtype="object")
-        else:
-            Meta_data = np.zeros((int(N_rows), 3), dtype="object")
+            meta_cols = 4
+            
+        Meta_data = np.zeros((int(N_rows), meta_cols), dtype="object")
 
-        # if "Run" in self.sheets:
+        # Filling up meta_data with positions, run and channelnames
         for jch in range(N_chn):
             alpha = 0
             beta = 0
@@ -354,18 +397,10 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
                     beta = 0
                     alpha = alpha + 1
 
-                if "Run" in list(data.keys()):
-                    if N_chn == 1:
-                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 3] = self.sheet
-                    else:
-                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 3] = self.sheets[jch]
+                Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), -1] = self.sheets[jch]
 
-                    Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 2] = list(range(0, Max_run))
-                else:
-                    if N_chn == 1:
-                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 2] = self.sheet
-                    else:
-                        Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_col * Max_run * jch), 2] = self.sheets[jch]
+                if "Run" in list(data.keys()):
+                    Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), -2] = list(range(0, Max_run))
 
                 Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 1] = ypos[int(alpha),int(beta)]
                 Meta_data[i + (Max_row * Max_col * Max_run * jch) : i + Max_run + (Max_row * Max_run * Max_col * jch), 0] = xpos[int(alpha),int(beta)]
