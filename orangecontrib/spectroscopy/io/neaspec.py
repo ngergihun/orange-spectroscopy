@@ -217,18 +217,21 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
     @property
     def sheets(self):
         if self.filename.endswith(".nea"):
-            data_reader = readers.NeaFileReader(self.filename)
+            data_reader = readers.NeaFileLegacyReader(self.filename)
             data, _ = data_reader.read()
             channels = list(data.keys())[3:]
-        else:
+        elif self.filename.endswith(".txt"):
             data_reader = readers.NeaHeaderReader(self.filename)
             channels, _ = data_reader.read()
             channels.append("All")
             channels = [c for c in channels if c not in ('Row','Column','Run','Omega','Wavenumber','Depth')]
+        else:
+            channels = None
 
         return channels
 
     def read_spectra(self):
+
         if self.filename.endswith(".nea"):
             data_reader = readers.NeaFileLegacyReader(self.filename)
             data, measparams = data_reader.read()
@@ -247,30 +250,44 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         else:
             N_chn = 1
 
-        # Extract other data #
+        # There are strored in the measparams
         Max_row = int(measparams["PixelArea"][0])
         Max_col = int(measparams["PixelArea"][1])
 
-        # For ifg files
-        if "Depth" in list(data.keys()):
-            Max_omega = int(np.max(data["Depth"]) + 1)
-        else:
-            Max_omega = int(np.max(data["Omega"]) + 1)
-
-        # IFG file if Run is amongst the channels
+        # Run is only there for ifg files
         if "Run" in list(data.keys()):
             Max_run = int(np.max(data["Run"]) + 1)
         else:
             Max_run = int(1)
 
+        if self.filename.endswith(".nea"):
+            Max_omega = int(measparams["PixelArea"][2])
+        else:
+            if "Depth" in list(data.keys()):
+                Max_omega = int(np.max(data["Depth"]) + 1)
+            else:
+                Max_omega = int(np.max(data["Omega"]) + 1)
+
         N_rows = Max_row * Max_col * Max_run * N_chn
         N_cols = Max_omega
 
-        angle = np.radians(measparams["Rotation"])
-        width = measparams["ScanArea"][0]
-        height = measparams["ScanArea"][1]
-        xoff = measparams["ScannerCenterPosition"][0]
-        yoff = measparams["ScannerCenterPosition"][1]
+        # Calculate coordinates for each point if parameters are given
+        if "Rotation" in list(measparams.keys()):
+            angle = np.radians(measparams["Rotation"])
+        else:
+            angle = 0
+        if "ScanArea" in list(measparams.keys()):
+            width = measparams["ScanArea"][0]
+            height = measparams["ScanArea"][1]
+        else:
+            width = Max_row
+            height = Max_col
+        if  "ScannerCenterPosition" in list(measparams.keys()):
+            xoff = measparams["ScannerCenterPosition"][0]
+            yoff = measparams["ScannerCenterPosition"][1]
+        else:
+            xoff = 0.0
+            yoff = 0.0
 
         # Create the list of points cenetered to the origo
         x = np.linspace(-width / 2, width / 2, Max_row)
@@ -298,11 +315,10 @@ class NeaSpectralReader(FileFormat, SpectralFileFormat):
         xpos = np.reshape(np.array(xpos),(Max_col,Max_row))
         ypos = np.reshape(np.array(ypos),(Max_col,Max_row))
 
-        # Transform Actual Data
+        # Transform actual data
         M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
 
         for jch in range(N_chn):
-
             if chn == "All":
                 rawdata = data[self.sheets[jch]]
             else:
