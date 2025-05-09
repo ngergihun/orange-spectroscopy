@@ -4,7 +4,7 @@ import bottleneck as bn
 
 from scipy.ndimage import sobel
 # from scipy.ndimage.interpolation import shift
-from scipy.ndimage import shift
+from scipy.ndimage import shift, fourier_shift
 from skimage.registration import phase_cross_correlation
 
 from AnyQt.QtCore import Qt
@@ -105,14 +105,23 @@ def process_stack(data, xat, yat, upsample_factor=100, use_sobel=False, ref_fram
     hypercube, lsx, lsy = get_hypercube(data, xat, yat)
     if bn.anynan(hypercube):
         raise NanInsideHypercube(True)
-
-    calculate_shift = RegisterTranslation(upsample_factor=upsample_factor)
-    filterfn = sobel if use_sobel else lambda x: x
-    shifts, aligned_stack = alignstack(hypercube.T,
-                                       shiftfn=calculate_shift,
-                                       ref_frame_num=ref_frame_num,
-                                       filterfn=filterfn)
-
+    
+    if refdata is None:
+        shifts, aligned_stack = alignstack(hypercube.T,
+                                        shiftfn=calculate_shift,
+                                        ref_frame_num=ref_frame_num,
+                                        filterfn=filterfn)
+    else:
+        # check the attribute thing later
+        hypercube_ref, lsx_ref, lsy_ref = get_hypercube(refdata, xat, yat)
+        if bn.anynan(hypercube_ref):
+            raise NanInsideHypercube(True)
+        shifts = calculate_stack_shifts(hypercube_ref.T,
+                                        shiftfn=calculate_shift, 
+                                        ref_frame_num=ref_frame_num,
+                                        filterfn=filterfn)
+        aligned_stack = alignstack_with_shifts(hypercube.T, shifts)
+        
     xmin, ymin = shifts[:, 0].min(), shifts[:, 1].min()
     xmax, ymax = shifts[:, 0].max(), shifts[:, 1].max()
     xmin, xmax = int(round(xmin)), int(round(xmax))
@@ -143,6 +152,7 @@ class OWStackAlign(OWWidget):
     # Define inputs and outputs
     class Inputs:
         data = Input("Stack of images", Table, default=True)
+        refdata = Input("Reference images", Table, default=True)
 
     class Outputs:
         newstack = Output("Aligned image stack", Table, default=True)
@@ -204,12 +214,17 @@ class OWStackAlign(OWWidget):
         # TODO:  resize widget to make it a bit smaller
 
         self.data = None
+        self.refdata = None
 
         gui.auto_commit(self.controlArea, self, "autocommit", "Send Data")
 
     def _sanitize_ref_frame(self):
-        if self.ref_frame_num > self.data.X.shape[1]:
-            self.ref_frame_num = self.data.X.shape[1]
+        if self.refdata is None:
+            if self.ref_frame_num > self.data.X.shape[1]:
+                self.ref_frame_num = self.data.X.shape[1]
+        else:
+            if self.ref_frame_num > self.refdata.X.shape[1]:
+                self.ref_frame_num = self.refdata.X.shape[1]
 
     def _ref_frame_changed(self):
         self._sanitize_ref_frame()
@@ -245,6 +260,19 @@ class OWStackAlign(OWWidget):
         self.Error.invalid_axis.clear()
         self.commit.now()
 
+    @Inputs.refdata
+    def set_reference(self, refdataset):
+        self.closeContext()
+        self.openContext(refdataset)
+        if refdataset is not None:
+            self.refdata = refdataset
+            self._sanitize_ref_frame()
+        else:
+            self.refdata = None
+        self.Error.nan_in_image.clear()
+        self.Error.invalid_axis.clear()
+        self.commit.now()
+
     @gui.deferred
     def commit(self):
         new_stack = None
@@ -258,13 +286,12 @@ class OWStackAlign(OWWidget):
             try:
                 shifts, new_stack = process_stack(self.data, self.attr_x, self.attr_y,
                                                   upsample_factor=100, use_sobel=self.sobel_filter,
-                                                  ref_frame_num=self.ref_frame_num-1)
+                                                  ref_frame_num=self.ref_frame_num-1, refdata=self.refdata)
             except NanInsideHypercube as e:
                 self.Error.nan_in_image(e.args[0])
             except InvalidAxisException as e:
                 self.Error.invalid_axis(e.args[0])
             else:
-                # TODO: label axes
                 frames = np.linspace(1, shifts.shape[0], shifts.shape[0])
                 self.plotview.plotItem.plot(frames, shifts[:, 0],
                                             pen=pg.mkPen(color=(255, 40, 0), width=3),
@@ -290,5 +317,6 @@ class OWStackAlign(OWWidget):
 
 if __name__ == "__main__":  # pragma: no cover
     from orangecontrib.spectroscopy.tests.test_owalignstack import stxm_diamond
+    rev = Orange.data.Table("REVlaserAmid.xyz")
     from Orange.widgets.utils.widgetpreview import WidgetPreview
-    WidgetPreview(OWStackAlign).run(stxm_diamond)
+    WidgetPreview(OWStackAlign).run(set_data=rev)
