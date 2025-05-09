@@ -168,6 +168,7 @@ class OWStackAlign(OWWidget):
     resizing_enabled = False
 
     settingsHandler = DomainContextHandler()
+    use_refinput = settings.Setting(False)
 
     sobel_filter = settings.Setting(False)
     attr_x = ContextSetting(None, exclude_attributes=True)
@@ -193,6 +194,11 @@ class OWStackAlign(OWWidget):
 
         self.contextAboutToBeOpened.connect(self._init_interface_data)
 
+        refbox = gui.widgetBox(self.controlArea, "Tracking images")
+        gui.checkBox(refbox, self, "use_refinput",
+                     label="Use reference images",
+                     callback=self._ref_frame_changed)
+        
         box = gui.widgetBox(self.controlArea, "Parameters")
 
         gui.checkBox(box, self, "sobel_filter",
@@ -284,9 +290,10 @@ class OWStackAlign(OWWidget):
 
         if self.data and len(self.data.domain.attributes) and self.attr_x and self.attr_y:
             try:
+                refdata = self.refdata if self.use_refinput else None
                 shifts, new_stack = process_stack(self.data, self.attr_x, self.attr_y,
                                                   upsample_factor=100, use_sobel=self.sobel_filter,
-                                                  ref_frame_num=self.ref_frame_num-1, refdata=self.refdata)
+                                                  ref_frame_num=self.ref_frame_num-1, refdata=refdata)
             except NanInsideHypercube as e:
                 self.Error.nan_in_image(e.args[0])
             except InvalidAxisException as e:
