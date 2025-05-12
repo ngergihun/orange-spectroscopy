@@ -186,6 +186,10 @@ class RegisterDriftsToFeatureAttributes:
 
     def __call__(self, data, image_opts, refdata=None):
 
+        for attr in data.domain.attributes:
+            if "shift" in list(attr.attributes.keys()):
+                del attr.attributes["shift"]
+
         stackdata = data if refdata is None else refdata
         attrs_to_run = [v for v in stackdata.domain.attributes]
         attrnames_to_mark = [v.name for v in data.domain.attributes]
@@ -239,6 +243,7 @@ class ShiftCorrector:
     def __call__(self, data, image_opts):
         # Only correct the feature image if the shift is available
         attrs_to_corect = [v for v in data.domain.attributes if "shift" in list(v.attributes.keys())]
+        wn = np.array([float(a.name) for a in attrs_to_corect])
         aligned_stack = None
         shifts = []
 
@@ -271,7 +276,7 @@ class ShiftCorrector:
 
         # transform numpy array Orange.data.Table
         return shifts, build_spec_table(*_spectra_from_image(cropped,
-                                                            getx(data),
+                                                            wn,
                                                             np.linspace(*lsx)[slicex],
                                                             np.linspace(*lsy)[slicey]))
 
@@ -351,8 +356,11 @@ class OWStackAlign(OWWidget):
     class Error(OWWidget.Error):
         nan_in_image = Msg("Unknown values within images: {} unknowns")
         invalid_axis = Msg("Invalid axis: {}")
-        missing_features = Msg("Data and reference data have different features.")
+        missing_features = Msg("Data and reference data have different features. Missing: {}")
         no_refdata = Msg("No reference data provided. Connect a reference table.")
+
+    class Warning(OWWidget.Warning):
+        data_reduced = Msg("Data reduced to match reference features")
 
     autocommit = settings.Setting(True)
 
@@ -470,6 +478,7 @@ class OWStackAlign(OWWidget):
             self.data = None
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
+        self.Error.missing_features.clear()
         self.commit.now()
 
     @Inputs.refdata
@@ -483,7 +492,8 @@ class OWStackAlign(OWWidget):
             self.refdata = None
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
-        self.Error.no_refdata.clear()
+        self.Error.missing_features.clear()
+        # self.Error.no_refdata.clear()
         self.commit.now()
 
     @gui.deferred
@@ -493,6 +503,8 @@ class OWStackAlign(OWWidget):
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
         self.Error.no_refdata.clear()
+        self.Error.missing_features.clear()
+        self.Warning.data_reduced.clear()
         self.plotview.plotItem.clear()
 
         if self.data and len(self.data.domain.attributes) and self.attr_x and self.attr_y:
@@ -503,6 +515,9 @@ class OWStackAlign(OWWidget):
                     raise MissingReference()
 
                 new_stack, shifts, wn = process_datatable(self.data, self.image_opts(), upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=refdata)
+
+                if len(new_stack.domain.attributes) < len(self.data.domain.attributes):
+                    self.Warning.data_reduced()
 
             except NanInsideHypercube as e:
                 self.Error.nan_in_image(e.args[0])
@@ -538,6 +553,7 @@ class OWStackAlign(OWWidget):
 
 if __name__ == "__main__":  # pragma: no cover
     from orangecontrib.spectroscopy.tests.test_owalignstack import stxm_diamond
-    rev = Orange.data.Table("TGQ1-stepscan-M1A-raw.xyz")
+    revm = Orange.data.Table("20250412-TGQ1-M1A-ifg-lowdrift-reduced.xyz")
+    revo = Orange.data.Table("20250412-TGQ1-O2A-ifg-lowdrift.xyz")
     from Orange.widgets.utils.widgetpreview import WidgetPreview
-    WidgetPreview(OWStackAlign).run(set_data=rev)
+    WidgetPreview(OWStackAlign).run(set_data=revo, set_reference=revm)
