@@ -2,9 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 import bottleneck as bn
 
-from scipy.ndimage import sobel
-# from scipy.ndimage.interpolation import shift
-from scipy.ndimage import shift, fourier_shift
+from scipy.ndimage import sobel, shift
 from skimage.registration import phase_cross_correlation
 
 from AnyQt.QtCore import Qt
@@ -18,11 +16,11 @@ from Orange.widgets.widget import OWWidget, Input, Output, Msg
 from Orange.widgets import gui, settings
 from Orange.widgets.visualize.utils.plotutils import PlotWidget
 
-from orangecontrib.spectroscopy.data import getx, build_spec_table
+from orangecontrib.spectroscopy.data import build_spec_table
 from orangecontrib.spectroscopy.io.util import _spectra_from_image
 from orangecontrib.spectroscopy.widgets.gui import lineEditIntRange
 from orangecontrib.spectroscopy.utils import NanInsideHypercube, InvalidAxisException, \
-    get_hypercube, get_ndim_hyperspec
+    get_ndim_hyperspec
 
 
 # the following line imports the copied code so that
@@ -35,9 +33,8 @@ from orangecontrib.spectroscopy.utils import (
     values_to_linspace,
     index_values,
 )
-# instead of from skimage.feature import register_translation
 
-# stack alignment code originally from: https://github.com/jpacold/STXM_live
+# inspiration for stack alignment code originally from: https://github.com/jpacold/STXM_live
 
 class NotMatchingFeatures(Exception):
     pass
@@ -72,37 +69,6 @@ def shift_fill(img, sh, fill=np.nan):
     shiftx = int(round(sh[1]))
     aligned[:, :max(0, shiftx)] = fill
     aligned[:, min(v, v+shiftx):] = fill
-
-    return aligned
-
-
-def alignstack(raw, shiftfn, ref_frame_num=0, filterfn=lambda x: x):
-    """Align to the first image"""
-    shifts = calculate_stack_shifts(raw, shiftfn, ref_frame_num=ref_frame_num,
-                                    filterfn=filterfn)
-    aligned = alignstack_with_shifts(raw, shifts)
-
-    return shifts, aligned
-
-def calculate_stack_shifts(raw, shiftfn, ref_frame_num=0, filterfn=lambda x: x):
-    """Calculate the shifts for each image in the stack"""
-    base = filterfn(raw[ref_frame_num])
-    shifts = []
-
-    for i, image in enumerate(raw):
-        if i != ref_frame_num:
-            shifts.append(shiftfn(base, filterfn(image)))
-        else:
-            shifts.append((0, 0))
-    shifts = np.array(shifts)
-
-    return shifts
-
-def alignstack_with_shifts(raw, shifts):
-    """Aligns the stack using the provided shifts"""
-    aligned = np.zeros((len(raw),) + raw[0].shape, dtype=raw[0].dtype)
-    for k in range(len(raw)):
-        aligned[k] = shift_fill(raw[k], shifts[k])
 
     return aligned
 
@@ -159,6 +125,7 @@ def axes_to_ndim_linspace(coordinates):
         indices.append(index_values(coor, lsa))
 
     return ls, tuple(indices)
+
 # Copied from orangecontrib.snom.preprocess.utils
 def get_ndim_hyperspec(data, attrs):
     # mostly copied from orangecontrib.spectroscopy.utils,
@@ -176,8 +143,10 @@ def get_ndim_hyperspec(data, attrs):
 
     return hyperspec, ls, indices
 
-# Need to modify to calculate shift and apply for the images
 class RegisterDriftsToFeatureAttributes:
+    """ Calculates the drift/shift for each features 
+    and assign the value to the features attributes 
+    for later use"""
 
     def __init__(self, ref_frame_num=0, upsample_factor=1, filterfn=lambda x: x):
         self.shiftfn = RegisterTranslation(upsample_factor=upsample_factor)
@@ -185,20 +154,21 @@ class RegisterDriftsToFeatureAttributes:
         self.filterfn = filterfn
 
     def __call__(self, data, image_opts, refdata=None):
-
+        # Delete all shifts if there was any previously
         for attr in data.domain.attributes:
             if "shift" in list(attr.attributes.keys()):
                 del attr.attributes["shift"]
-
+        # If we have reference set we calculate the shifts from that data
         stackdata = data if refdata is None else refdata
         attrs_to_run = [v for v in stackdata.domain.attributes]
+        # But we will label the features of the data images
         attrnames_to_mark = [v.name for v in data.domain.attributes]
         
-        # First get the template image
+        # First get the choosen template image
         image_opts["attr_value"] = attrs_to_run[self.ref_frame_num].name
         template_image_table = _prepare_table_for_image(stackdata, image_opts)
         template_image, _ = _image_from_table(template_image_table, image_opts)
-
+        # Check if there was any nan
         if bn.anynan(template_image):
             raise NanInsideHypercube(True)
 
@@ -239,7 +209,7 @@ class ShiftRetriever:
         return shifts, wn
 
 class ShiftCorrector:
-    """Correct the images for each feature using the shift values stored in the feature attributes and returns the aligned datatable"""
+    """Corrects the images for each feature using the shift values stored in the feature attributes and returns the aligned datatable"""
     def __call__(self, data, image_opts):
         # Only correct the feature image if the shift is available
         attrs_to_corect = [v for v in data.domain.attributes if "shift" in list(v.attributes.keys())]
@@ -280,48 +250,8 @@ class ShiftCorrector:
                                                             np.linspace(*lsx)[slicex],
                                                             np.linspace(*lsy)[slicey]))
 
-def process_stack(data, xat, yat, upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=None):
-
-    calculate_shift = RegisterTranslation(upsample_factor=upsample_factor)
-    filterfn = sobel if use_sobel else lambda x: x
-
-    hypercube, lsx, lsy = get_hypercube(data, xat, yat)
-    if bn.anynan(hypercube):
-        raise NanInsideHypercube(True)
-    
-    if refdata is None:
-        shifts, aligned_stack = alignstack(hypercube.T,
-                                        shiftfn=calculate_shift,
-                                        ref_frame_num=ref_frame_num,
-                                        filterfn=filterfn)
-    else:
-        # check the attribute thing later
-        hypercube_ref, lsx_ref, lsy_ref = get_hypercube(refdata, xat, yat)
-        if bn.anynan(hypercube_ref):
-            raise NanInsideHypercube(True)
-        shifts = calculate_stack_shifts(hypercube_ref.T,
-                                        shiftfn=calculate_shift, 
-                                        ref_frame_num=ref_frame_num,
-                                        filterfn=filterfn)
-        aligned_stack = alignstack_with_shifts(hypercube.T, shifts)
-
-    xmin, ymin = shifts[:, 0].min(), shifts[:, 1].min()
-    xmax, ymax = shifts[:, 0].max(), shifts[:, 1].max()
-    xmin, xmax = int(round(xmin)), int(round(xmax))
-    ymin, ymax = int(round(ymin)), int(round(ymax))
-
-    shape = hypercube.shape
-    slicex = slice(max(xmax, 0), min(shape[1], shape[1]+xmin))
-    slicey = slice(max(ymax, 0), min(shape[0], shape[0]+ymin))
-    cropped = np.array(aligned_stack).T[slicey, slicex]
-
-    # transform numpy array back to Orange.data.Table
-    return shifts, build_spec_table(*_spectra_from_image(cropped,
-                                                         getx(data),
-                                                         np.linspace(*lsx)[slicex],
-                                                         np.linspace(*lsy)[slicey]))
-
-def process_datatable(data, image_opts, upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=None):
+# Replacing process_stack of the old code
+def process_stack(data, image_opts, upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=None):
 
     filterfn = sobel if use_sobel else lambda x: x
 
@@ -511,7 +441,7 @@ class OWStackAlign(OWWidget):
                 if self.refdata is None and self.use_refinput is True:
                     raise MissingReference()
 
-                new_stack, shifts, wn = process_datatable(self.data, self.image_opts(), upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=refdata)
+                new_stack, shifts, wn = process_stack(self.data, self.image_opts(), upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=refdata)
 
                 if len(new_stack.domain.attributes) < len(self.data.domain.attributes):
                     self.Warning.data_reduced()
@@ -550,7 +480,5 @@ class OWStackAlign(OWWidget):
 
 if __name__ == "__main__":  # pragma: no cover
     from orangecontrib.spectroscopy.tests.test_owalignstack import stxm_diamond
-    revm = Orange.data.Table("20250412-TGQ1-M1A-ifg-lowdrift-reduced.xyz")
-    revo = Orange.data.Table("20250412-TGQ1-O2A-ifg-lowdrift.xyz")
     from Orange.widgets.utils.widgetpreview import WidgetPreview
-    WidgetPreview(OWStackAlign).run(set_data=revo, set_reference=revm)
+    WidgetPreview(OWStackAlign).run(stxm_diamond)
