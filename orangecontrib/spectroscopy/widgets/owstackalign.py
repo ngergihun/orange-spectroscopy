@@ -39,6 +39,11 @@ from orangecontrib.spectroscopy.utils import (
 
 # stack alignment code originally from: https://github.com/jpacold/STXM_live
 
+class NotMatchingFeatures(Exception):
+    pass
+
+class MissingReference(Exception):
+    pass
 
 class RegisterTranslation:
 
@@ -184,22 +189,31 @@ class RegisterDriftsToFeatureAttributes:
         stackdata = data if refdata is None else refdata
         attrs_to_run = [v for v in stackdata.domain.attributes]
         attrnames_to_mark = [v.name for v in data.domain.attributes]
+        
         # First get the template image
         image_opts["attr_value"] = attrs_to_run[self.ref_frame_num].name
         template_image_table = _prepare_table_for_image(stackdata, image_opts)
         template_image, _ = _image_from_table(template_image_table, image_opts)
-        # data.domain.attributes[self.ref_frame_num].attributes["shift"] = [0., 0.]
+
+        if bn.anynan(template_image):
+            raise NanInsideHypercube(True)
+
         # Run through all the images, calculate shifts and asign then to the featureattributes
         for j, attr in enumerate(attrs_to_run):
-            # Calculate the shift for the stackdata which can be either the data or a reference data table
             image_opts["attr_value"] = attr.name
             next_image_table = _prepare_table_for_image(stackdata, image_opts)
             next_image, _ = _image_from_table(next_image_table, image_opts)
+            # Check for NaN values
+            if bn.anynan(next_image):
+                raise NanInsideHypercube(True)
+            # Calculate the shift
             s = self.shiftfn(self.filterfn(template_image.T), self.filterfn(next_image.T))
-            # Assign the shift to the same feature in DATA
+            # Assign the shift to the attributes of the selected feature column
             if attr.name in attrnames_to_mark:
                 idx = attrnames_to_mark.index(attr.name)
                 data.domain.attributes[idx].attributes["shift"] = s
+            else:
+                raise NotMatchingFeatures(attr.name)
 
         return data
     
@@ -221,6 +235,7 @@ class ShiftRetriever:
         return shifts, wn
 
 class ShiftCorrector:
+    """Correct the images for each feature using the shift values stored in the feature attributes and returns the aligned datatable"""
     def __call__(self, data, image_opts):
         # Only correct the feature image if the shift is available
         attrs_to_corect = [v for v in data.domain.attributes if "shift" in list(v.attributes.keys())]
@@ -250,13 +265,11 @@ class ShiftCorrector:
         ymin, ymax = int(round(ymin)), int(round(ymax))
 
         shape = (image.shape[0],image.shape[1],len(attrs_to_corect))
-        print(f"Shape in new class: {shape}")
         slicex = slice(max(xmax, 0), min(shape[1], shape[1]+xmin))
         slicey = slice(max(ymax, 0), min(shape[0], shape[0]+ymin))
         cropped = np.array(aligned_stack).T[slicey, slicex]
 
-        # transform numpy array back to Orange.data.Table
-        # transform numpy array back to Orange.data.Table
+        # transform numpy array Orange.data.Table
         return shifts, build_spec_table(*_spectra_from_image(cropped,
                                                             getx(data),
                                                             np.linspace(*lsx)[slicex],
@@ -303,18 +316,19 @@ def process_stack(data, xat, yat, upsample_factor=100, use_sobel=False, ref_fram
                                                          np.linspace(*lsx)[slicex],
                                                          np.linspace(*lsy)[slicey]))
 
-def process_datatable(data, image_opts, upsample_factor=100, use_sobel=False, ref_frame_num=1, refdata=None):
+def process_datatable(data, image_opts, upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=None):
 
     filterfn = sobel if use_sobel else lambda x: x
 
-    shift_calculator = RegisterDriftsToFeatureAttributes(ref_frame_num=ref_frame_num-1, upsample_factor=upsample_factor, filterfn=filterfn)
+    shift_calculator = RegisterDriftsToFeatureAttributes(ref_frame_num=ref_frame_num, upsample_factor=upsample_factor, filterfn=filterfn)
     data = shift_calculator(data, image_opts, refdata=refdata)
     shift_getter = ShiftRetriever()
     shifts, wn = shift_getter(data)
     shift_corrector = ShiftCorrector()
-    aligned_stack, lsx, lsy = shift_corrector(data, image_opts)
+    _, new_stack = shift_corrector(data, image_opts)
 
-    
+    return new_stack, shifts, wn
+
 
 class OWStackAlign(OWWidget):
     # Widget's name as displayed in the canvas
@@ -337,10 +351,8 @@ class OWStackAlign(OWWidget):
     class Error(OWWidget.Error):
         nan_in_image = Msg("Unknown values within images: {} unknowns")
         invalid_axis = Msg("Invalid axis: {}")
-
-    class Warning(OWWidget.Warning):
-        diff_features = Msg("Data and reference data have different features")
-        no_refdata = Msg("No reference data provided. Calculating shifts based on the data itself.")
+        missing_features = Msg("Data and reference data have different features.")
+        no_refdata = Msg("No reference data provided. Connect a reference table.")
 
     autocommit = settings.Setting(True)
 
@@ -360,7 +372,6 @@ class OWStackAlign(OWWidget):
     def __init__(self):
         super().__init__()
 
-        # TODO: add input box for selecting which should be the reference frame
         box = gui.widgetBox(self.controlArea, "Axes")
 
         common_options = dict(labelWidth=50, orientation=Qt.Horizontal,
@@ -472,6 +483,7 @@ class OWStackAlign(OWWidget):
             self.refdata = None
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
+        self.Error.no_refdata.clear()
         self.commit.now()
 
     @gui.deferred
@@ -480,28 +492,28 @@ class OWStackAlign(OWWidget):
 
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
-
+        self.Error.no_refdata.clear()
         self.plotview.plotItem.clear()
 
         if self.data and len(self.data.domain.attributes) and self.attr_x and self.attr_y:
             try:
 
                 refdata = self.refdata if self.use_refinput else None
-                filterfn = sobel if self.sobel_filter else lambda x: x
+                if self.refdata is None and self.use_refinput is True:
+                    raise MissingReference()
 
-                shift_calculator = RegisterDriftsToFeatureAttributes(ref_frame_num=ref_frame_num-1, upsample_factor=upsample_factor, filterfn=filterfn)
-                self.data = shift_calculator(self.data, self.image_opts(), refdata=refdata)
-                shift_getter = ShiftRetriever()
-                shifts, wn = shift_getter(self.data)
-                shift_corrector = ShiftCorrector()
-                _, new_stack = shift_corrector(self.data, self.image_opts())
+                new_stack, shifts, wn = process_datatable(self.data, self.image_opts(), upsample_factor=100, use_sobel=False, ref_frame_num=0, refdata=refdata)
 
             except NanInsideHypercube as e:
                 self.Error.nan_in_image(e.args[0])
             except InvalidAxisException as e:
                 self.Error.invalid_axis(e.args[0])
+            except NotMatchingFeatures as e:
+                self.Error.missing_features(e.args[0])
+            except MissingReference:
+                self.Error.no_refdata()
             else:
-                frames = wn # np.linspace(1, shifts.shape[0], shifts.shape[0])
+                frames = np.linspace(1, shifts.shape[0], shifts.shape[0])
                 self.plotview.plotItem.plot(frames, shifts[:, 0],
                                             pen=pg.mkPen(color=(255, 40, 0), width=3),
                                             symbol='o', symbolBrush=(255, 40, 0), symbolPen='w',
