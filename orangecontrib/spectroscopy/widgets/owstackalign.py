@@ -483,8 +483,6 @@ class OWStackAlign(OWWidget):
 
     @Inputs.refdata
     def set_reference(self, refdataset):
-        self.closeContext()
-        self.openContext(refdataset)
         if refdataset is not None:
             self.refdata = refdataset
             self._sanitize_ref_frame()
@@ -493,7 +491,6 @@ class OWStackAlign(OWWidget):
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
         self.Error.missing_features.clear()
-        # self.Error.no_refdata.clear()
         self.commit.now()
 
     @gui.deferred
