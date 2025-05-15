@@ -22,8 +22,10 @@ def add_meta_to_table(data, var, values):
         newtable[:, var] = np.atleast_1d(values).reshape(-1, 1)
     return newtable
 
+
 DEFAULT_HENE = 15797.337544
 CHUNK_SIZE = 100
+
 
 class OWFFT(OWWidget):
     # Widget's name as displayed in the canvas
@@ -32,7 +34,8 @@ class OWFFT(OWWidget):
     # Short widget description
     description = (
         "Performs Fast Fourier Transform on an interferogram, including "
-        "zero filling, apodization and phase correction.")
+        "zero filling, apodization and phase correction."
+    )
 
     # An icon resource file path for this widget
     # (a path relative to the module where this widget is defined)
@@ -60,7 +63,9 @@ class OWFFT(OWWidget):
     zpd1 = settings.Setting(0)
     zpd2 = settings.Setting(0)
     apod_func = settings.Setting(1)
-    zff = settings.Setting(1)  # an exponent for zero-filling factor, IRFFT() needs 2**zff
+    zff = settings.Setting(
+        1
+    )  # an exponent for zero-filling factor, IRFFT() needs 2**zff
     phase_corr = settings.Setting(0)
     phase_res_limit = settings.Setting(True)
     phase_resolution = settings.Setting(32)
@@ -71,22 +76,26 @@ class OWFFT(OWWidget):
     use_phaseinput_for_complexfft = settings.Setting(False)
     asym_apod = settings.Setting(False)
 
-    sweep_opts = ("Single",
-                  "Forward-Backward",
-                  "Forward",
-                  "Backward",
-                 )
+    sweep_opts = (
+        "Single",
+        "Forward-Backward",
+        "Forward",
+        "Backward",
+    )
 
-    apod_opts = ("Boxcar (None)",               # <irfft.ApodFunc.BOXCAR: 0>
-                 "Blackman-Harris (3-term)",    # <irfft.ApodFunc.BLACKMAN_HARRIS_3: 1>
-                 "Blackman-Harris (4-term)",    # <irfft.ApodFunc.BLACKMAN_HARRIS_4: 2>
-                 "Blackman Nuttall (EP)")       # <irfft.ApodFunc.BLACKMAN_NUTTALL: 3>
+    apod_opts = (
+        "Boxcar (None)",  # <irfft.ApodFunc.BOXCAR: 0>
+        "Blackman-Harris (3-term)",  # <irfft.ApodFunc.BLACKMAN_HARRIS_3: 1>
+        "Blackman-Harris (4-term)",  # <irfft.ApodFunc.BLACKMAN_HARRIS_4: 2>
+        "Blackman Nuttall (EP)",
+    )  # <irfft.ApodFunc.BLACKMAN_NUTTALL: 3>
 
-    phase_opts = ("Mertz",              # <irfft.PhaseCorrection.MERTZ: 0>
-                  "Mertz Signed",       # <irfft.PhaseCorrection.MERTZSIGNED: 1>
-                  "Stored Phase",       # <irfft.PhaseCorrection.STORED: 2>
-                  "None (real/imag)",   # <irfft.PhaseCorrection.NONE: 3>
-                 )
+    phase_opts = (
+        "Mertz",  # <irfft.PhaseCorrection.MERTZ: 0>
+        "Mertz Signed",  # <irfft.PhaseCorrection.MERTZSIGNED: 1>
+        "Stored Phase",  # <irfft.PhaseCorrection.STORED: 2>
+        "None (real/imag)",  # <irfft.PhaseCorrection.NONE: 3>
+    )
 
     # GUI definition:
     #   a simple 'single column' GUI layout
@@ -97,7 +106,9 @@ class OWFFT(OWWidget):
     class Warning(OWWidget.Warning):
         # This is not actuully called anywhere at the moment
         phase_res_limit_low = Msg("Phase resolution limit too low")
-        complex_data_phase_zero = Msg("Phase data is not connected, thus it is considered zero.")
+        complex_data_phase_zero = Msg(
+            "Phase data is not connected, thus it is considered zero."
+        )
 
     class Error(OWWidget.Error):
         fft_error = Msg("FFT error:\n{}")
@@ -208,7 +219,8 @@ class OWFFT(OWWidget):
         layout.addWidget(self.optionsBox, 0, 1, 3, 1)
 
         cb0 = gui.checkBox(
-            self.optionsBox, self, "use_phaseinput_for_complexfft",
+            self.optionsBox, self, 
+            "use_phaseinput_for_complexfft",
             label="Complex FFT with phase input",
             callback=self.complex_fft_changed
             )
@@ -237,8 +249,8 @@ class OWFFT(OWWidget):
             self.optionsBox, self, "phase_corr",
             label="Phase Correction:",
             items=self.phase_opts,
-            callback=self.setting_changed
-            )
+            callback=self.setting_changed,
+        )
 
         grid = QGridLayout()
         grid.setContentsMargins(0, 0, 0, 0)
@@ -312,6 +324,7 @@ class OWFFT(OWWidget):
                                 (["Single"] + 3*["Forward-Backward"])[self.sweeps]))
             self.infob.setText('%d points each' % dataset.X.shape[1])
             self.check_metadata()
+            self.configui_for_polar_FFT_inputphase()
             self.dataBox.setDisabled(False)
             self.optionsBox.setDisabled(False)
         else:
@@ -405,7 +418,7 @@ class OWFFT(OWWidget):
                                  phase_res=self.phase_resolution if self.phase_res_limit else None,
                                  phase_corr=self.phase_corr,
                                  peak_search=self.peak_search,
-                                 asym_apod=self.asym_apod
+                                 asym_apod=self.asym_apod,
                                 )
 
         ifg_data = self.data.X
@@ -436,7 +449,7 @@ class OWFFT(OWWidget):
                 phase_res=self.phase_resolution if self.phase_res_limit else None,
                 phase_corr=self.phase_corr,
                 peak_search=self.peak_search,
-                asym_apod=self.asym_apod
+                asym_apod=self.asym_apod,
             )
 
         for row in ifg_data:
@@ -517,9 +530,7 @@ class OWFFT(OWWidget):
         self.Outputs.spectra.send(self.spectra_table)
         self.Outputs.phases.send(self.phases_table)
 
-
     def calculate_polar_FFT(self):
-
         # Reset info, error and warning dialogs
         self.Error.clear()
         self.Warning.clear()
@@ -530,7 +541,7 @@ class OWFFT(OWWidget):
         else:
             amplitude_in = self.data.X[::2]
             phases_in = self.data.X[1::2]
-        
+
         if phases_in is None:
             phases_in = 0
             self.Warning.complex_data_phase_zero()
@@ -569,7 +580,7 @@ class OWFFT(OWWidget):
 
         if self.use_phaseinput_for_complexfft:
             self.spectra_table = Table.from_numpy(
-            wavenumbers_domain, X=spectra, metas=self.data.metas
+                wavenumbers_domain, X=spectra, metas=self.data.metas
             )
             phases_table = Table.from_numpy(
                 wavenumbers_domain, X=phases, metas=self.data.metas
@@ -645,7 +656,7 @@ class OWFFT(OWWidget):
             domain_units, dx = self.data.attributes["Calculated Datapoint Spacing (Δx)"]
             if domain_units != "[cm]" or not dx:
                 raise KeyError
-            
+
             self.dx = dx
             self.zff = 2
             self.dx_HeNe = False
@@ -674,12 +685,11 @@ class OWFFT(OWWidget):
             lwn = self.data.get_column("Effective Laser Wavenumber")
         except ValueError:
             if not self.dx_HeNe_cb.isEnabled():
-                # Only reset if disabled by this code, otherwise leave alone
+                # Removed the reset of dx since it always overwrites
+                # the value set by the user when a different datatable
+                # is connected
                 self.dx_HeNe_cb.setDisabled(False)
                 self.infoc.setText("")
-                self.dx_HeNe = True
-                self.dx_edit.setDisabled(self.dx_HeNe)
-                self.dx = 1.0 / self.laser_wavenumber / 2.0
             return
         else:
             lwn = lwn[0] if (lwn == lwn[0]).all() else ValueError()
@@ -708,7 +718,7 @@ class OWFFT(OWWidget):
             spectra = spectra[:, limits[0]:limits[1]]
 
         return wavenumbers, spectra
-    
+
     def configui_for_polar_FFT_inputphase(self):
         """
         Configure the GUI for polar FFT with phase from strored_phase input
@@ -716,7 +726,6 @@ class OWFFT(OWWidget):
         if self.use_phaseinput_for_complexfft:
             self.dx_HeNe = False
             self.dx_edit.setDisabled(False)
-            self.dx_HeNe_cb.setChecked(False)
             self.controls.phase_corr.setDisabled(True)
             self.controls.phase_res_limit.setDisabled(True)
             self.controls.phase_resolution.setDisabled(True)
@@ -735,6 +744,7 @@ def load_test_gsf() -> Orange.data.Table:
     fn = 'NeaReaderGSF_test/NeaReaderGSF_test O2A raw.gsf'
     absolute_filename = FileFormat.locate(fn, dataset_dirs)
     return NeaReaderGSF(absolute_filename).read()
+
 
 if __name__ == "__main__":  # pragma: no cover
     # pylint: disable=ungrouped-imports
