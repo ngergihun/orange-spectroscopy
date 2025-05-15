@@ -219,6 +219,12 @@ class OWFFT(OWWidget):
             items=self.apod_opts,
             callback=self.setting_changed
             )
+        
+        self.asym_apod_cb = gui.checkBox(
+            self.optionsBox, self, "asym_apod",
+            label="Asymmetric",
+            callback=self.setting_changed
+            )
 
         box = gui.comboBox(
             self.optionsBox, self, "zff",
@@ -399,6 +405,7 @@ class OWFFT(OWWidget):
                                  phase_res=self.phase_resolution if self.phase_res_limit else None,
                                  phase_corr=self.phase_corr,
                                  peak_search=self.peak_search,
+                                 asym_apod=self.asym_apod
                                 )
 
         ifg_data = self.data.X
@@ -429,6 +436,7 @@ class OWFFT(OWWidget):
                 phase_res=self.phase_resolution if self.phase_res_limit else None,
                 phase_corr=self.phase_corr,
                 peak_search=self.peak_search,
+                asym_apod=self.asym_apod
             )
 
         for row in ifg_data:
@@ -540,6 +548,7 @@ class OWFFT(OWWidget):
             phase_res=self.phase_resolution if self.phase_res_limit else None,
             phase_corr=self.phase_corr,
             peak_search=self.peak_search,
+            asym_apod=self.asym_apod,
         )
         for row in ifg_data:
             spectrum_out, phase_out, wavenumbers = fft_single(row, zpd=None)

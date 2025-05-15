@@ -55,7 +55,7 @@ def find_zpd(ifg, peak_search):
     else:
         raise NotImplementedError
 
-def apodize(ifg, zpd, apod_func):
+def apodize(ifg, zpd, apod_func, asym_apod=False):
     """
     Perform apodization of asymmetric interferogram using selected apodization
     function
@@ -79,6 +79,15 @@ def apodize(ifg, zpd, apod_func):
     wing_n = zpd + 1
     wing_p = ifg_N - (zpd + 1)
 
+    n_n = np.arange(wing_n)
+    n_p = np.arange(wing_p)
+    
+    if not asym_apod:
+        if wing_n >= wing_p:
+            wing_p = wing_n
+        else:
+            wing_n = wing_p
+
     if apod_func == ApodFunc.BOXCAR:
         # Boxcar apodization AKA as-collected
         return ifg
@@ -91,8 +100,7 @@ def apodize(ifg, zpd, apod_func):
         A1 = 0.49755
         A2 = 0.07922
         A3 = 0.0
-        n_n = np.arange(wing_n)
-        n_p = np.arange(wing_p)
+        
         Bs_n = A0\
             + A1 * np.cos(np.pi*n_n/wing_n)\
             + A2 * np.cos(np.pi*2*n_n/wing_n)\
@@ -111,8 +119,9 @@ def apodize(ifg, zpd, apod_func):
         A1 = 0.48829
         A2 = 0.14128
         A3 = 0.01168
-        n_n = np.arange(wing_n)
-        n_p = np.arange(wing_p)
+
+        print("wing_n: ", wing_n)
+        print("wing_p: ", wing_p)
         Bs_n = A0\
             + A1 * np.cos(np.pi*n_n/wing_n)\
             + A2 * np.cos(np.pi*2*n_n/wing_n)\
@@ -188,7 +197,7 @@ class IRFFT():
     def __init__(self, dx,
                  apod_func=ApodFunc.BLACKMAN_HARRIS_3, zff=2,
                  phase_res=None, phase_corr=PhaseCorrection.MERTZ,
-                 peak_search=PeakSearch.MAXIMUM,
+                 peak_search=PeakSearch.MAXIMUM,asym_apod=False,
                 ):
         self.dx = dx
         self.apod_func = apod_func
@@ -196,6 +205,7 @@ class IRFFT():
         self.phase_res = phase_res
         self.phase_corr = phase_corr
         self.peak_search = peak_search
+        self.asym_apod = asym_apod
 
     def __call__(self, ifg, zpd=None, phase=None):
         if ifg.ndim != 1:
@@ -214,7 +224,7 @@ class IRFFT():
         # Calculate phase on interferogram of specified size 2*L
         L = self.phase_ifg_size(ifg.shape[0])
         if L == 0: # Use full ifg for phase
-            ifg = apodize(ifg, self.zpd, self.apod_func)
+            ifg = apodize(ifg, self.zpd, self.apod_func, asym_apod=self.asym_apod)
             ifg = zero_fill(ifg, self.zff)
             # Rotate the Complete IFG so that the centerburst is at edges.
             ifg = np.hstack((ifg[self.zpd:], ifg[0:self.zpd]))
@@ -226,12 +236,12 @@ class IRFFT():
             # Select phase interferogram as copy
             # Note that L is now the zpd index
             Ixs = ifg[self.zpd - L : self.zpd + L].copy()
-            ifg = apodize(ifg, self.zpd, self.apod_func)
+            ifg = apodize(ifg, self.zpd, self.apod_func, asym_apod=self.asym_apod)
             ifg = zero_fill(ifg, self.zff)
             ifg = np.hstack((ifg[self.zpd:], ifg[0:self.zpd]))
             Nzff = ifg.shape[0]
 
-            Ixs = apodize(Ixs, L, self.apod_func)
+            Ixs = apodize(Ixs, L, self.apod_func, asym_apod=self.asym_apod)
             # Zero-fill Ixs to same size as ifg (instead of interpolating later)
             Ixs = _zero_fill_pad(Ixs, Nzff - Ixs.shape[0])
             Ixs = np.hstack((Ixs[L:], Ixs[0:L]))
@@ -299,7 +309,7 @@ class MultiIRFFT(IRFFT):
         # Calculate phase on interferogram of specified size 2*L
         L = self.phase_ifg_size(ifg.shape[1])
         if L == 0: # Use full ifg for phase #TODO multi is this code tested
-            ifg = apodize(ifg, self.zpd, self.apod_func)
+            ifg = apodize(ifg, self.zpd, self.apod_func, asym_apod=self.asym_apod)
             ifg = zero_fill(ifg, self.zff)
             # Rotate the Complete IFG so that the centerburst is at edges.
             ifg = np.hstack((ifg[self.zpd:], ifg[0:self.zpd]))
@@ -311,12 +321,12 @@ class MultiIRFFT(IRFFT):
             # Select phase interferogram as copy
             # Note that L is now the zpd index
             Ixs = ifg[:, self.zpd - L : self.zpd + L].copy()
-            ifg = apodize(ifg, self.zpd, self.apod_func)
+            ifg = apodize(ifg, self.zpd, self.apod_func, asym_apod=self.asym_apod)
             ifg = zero_fill(ifg, self.zff)
             ifg = np.hstack((ifg[:, self.zpd:], ifg[:, 0:self.zpd]))
             Nzff = ifg.shape[1]
 
-            Ixs = apodize(Ixs, L, self.apod_func)
+            Ixs = apodize(Ixs, L, self.apod_func, asym_apod=self.asym_apod)
             # Zero-fill Ixs to same size as ifg (instead of interpolating later)
             Ixs = _zero_fill_pad(Ixs, Nzff - Ixs.shape[1])
             Ixs = np.hstack((Ixs[:, L:], Ixs[:, 0:L]))
@@ -349,7 +359,7 @@ class ComplexFFT(IRFFT):
         else:
             self.zpd = find_zpd(ifg, self.peak_search)
 
-        ifg = apodize(ifg, self.zpd, self.apod_func)
+        ifg = apodize(ifg, self.zpd, self.apod_func, asym_apod=self.asym_apod)
         ifg = zero_fill(ifg, self.zff)
         # Rotate the Complete IFG so that the centerburst is at edges.
         ifg = np.hstack((ifg[self.zpd:], ifg[0:self.zpd]))
