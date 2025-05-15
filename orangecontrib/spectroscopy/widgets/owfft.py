@@ -651,6 +651,7 @@ class OWFFT(OWWidget):
             self.dx_HeNe = False
             self.dx_HeNe_cb.setDisabled(True)
             self.dx_edit.setDisabled(True)
+            self.asym_apod_cb.setChecked(True)
             self.controls.auto_sweeps.setDisabled(True)
             self.controls.sweeps.setDisabled(True)
             self.controls.peak_search.setEnabled(True)
@@ -738,6 +739,4 @@ def load_test_gsf() -> Orange.data.Table:
 if __name__ == "__main__":  # pragma: no cover
     # pylint: disable=ungrouped-imports
     from Orange.widgets.utils.widgetpreview import WidgetPreview
-    data = Orange.data.Table("20250412-TGQ1-O2A-ifg-lowdrift.xyz")
-    phase = Orange.data.Table("20250412-TGQ1-O2P-ifg-lowdrift.xyz")
-    WidgetPreview(OWFFT).run(set_data=data,set_stored_phase=phase)
+    WidgetPreview(OWFFT).run(load_test_gsf())
