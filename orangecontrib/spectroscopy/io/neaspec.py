@@ -15,7 +15,7 @@ from pySNOM import readers
 
 class NeaReader(FileFormat, SpectralFileFormat):
     EXTENSIONS = (".nea",".txt",".gsf",)
-    DESCRIPTION = "NeaSPEC spectrum and ifg files"
+    DESCRIPTION = "NeaSPEC"
 
     @property
     def sheets(self):
@@ -109,6 +109,8 @@ class NeaReader(FileFormat, SpectralFileFormat):
         else:
             if "Depth" in list(data.keys()):
                 Max_omega = int(np.max(data["Depth"]) + 1)
+            elif "Index" in list(data.keys()):
+                Max_omega = int(np.max(data["Index"]) + 1)
             else:
                 Max_omega = int(np.max(data["Omega"]) + 1)
 
