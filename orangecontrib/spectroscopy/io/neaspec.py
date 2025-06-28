@@ -162,26 +162,26 @@ class NeaReader(FileFormat, SpectralFileFormat):
         # Transform actual data
         M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
 
-        for jch in range(N_chn):
-            if chn == "All":
-                rawdata = data[self.sheets[jch]]
-            else:
-                rawdata = data[chn]
+        if chn == "All":
+            channelnames = [c for c in self.sheets if c != "All"]
+        else:
+            channelnames = [chn]
 
-            for j in range(int(Max_row * Max_col)):
-                row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
-                assert np.all(row_value == row_value[0])
-                col_value = data["Column"][j * (Max_omega) : (j + 1) * (Max_omega)]
-                assert np.all(col_value == col_value[0])
+        for j in range(int(Max_row * Max_col)):
+            row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
+            assert np.all(row_value == row_value[0])
+            col_value = data["Column"][j * (Max_omega) : (j + 1) * (Max_omega)]
+            assert np.all(col_value == col_value[0])
 
-                all_runs = rawdata[
-                    j * (Max_run * Max_omega) : (j + 1) * (Max_run * Max_omega)
-                ]
-
-                for k in range(Max_run):
+            for jrun in range(Max_run):
+                for jch in range(N_chn):
+                    rawdata = data[channelnames[jch]]
+                    rundata = rawdata[
+                        j * Max_run * Max_omega + jrun * Max_omega : j * Max_run * Max_omega + (jrun + 1) * Max_omega
+                    ]
                     M[
-                        k + Max_run * j + (Max_row * Max_col * Max_run * jch), :
-                    ] = all_runs[k * (Max_omega) : (k + 1) * (Max_omega)]
+                        jch + N_chn * jrun + (Max_run * N_chn * j), :
+                    ] = rundata
 
         # Preparing metas
         meta_cols = 3
@@ -191,47 +191,49 @@ class NeaReader(FileFormat, SpectralFileFormat):
         Meta_data = np.zeros((int(N_rows), meta_cols), dtype="object")
 
         # Filling up meta_data with positions, run and channelnames
-        for jch in range(N_chn):
-            alpha = 0
-            beta = 0
+        alpha = 0
+        beta = 0
 
-            for idx, i in enumerate(range(0, Max_row * Max_col * Max_run, Max_run)):
-                if beta == Max_row:
-                    beta = 0
-                    alpha = alpha + 1
+        for idx, i in enumerate(range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run)):
+            if beta == Max_row:
+                beta = 0
+                alpha = alpha + 1
 
+            for jrun in range(Max_run):
                 Meta_data[
                     i
-                    + (Max_row * Max_col * Max_run * jch) : i
-                    + Max_run
-                    + (Max_row * Max_col * Max_run * jch),
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
                     -1,
-                ] = self.sheets[jch]
+                ] = channelnames
 
                 if "Run" in list(data.keys()):
                     Meta_data[
                         i
-                        + (Max_row * Max_col * Max_run * jch) : i
-                        + Max_run
-                        + (Max_row * Max_run * Max_col * jch),
+                        + (Max_row * Max_col * N_chn * jrun) : i
+                        + N_chn
+                        + (Max_row * Max_col * N_chn * jrun),
                         -2,
-                    ] = list(range(0, Max_run))
+                    ] = jrun
 
                 Meta_data[
                     i
-                    + (Max_row * Max_col * Max_run * jch) : i
-                    + Max_run
-                    + (Max_row * Max_run * Max_col * jch),
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
                     1,
                 ] = ypos[int(alpha), int(beta)]
+
                 Meta_data[
                     i
-                    + (Max_row * Max_col * Max_run * jch) : i
-                    + Max_run
-                    + (Max_row * Max_run * Max_col * jch),
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
                     0,
                 ] = xpos[int(alpha), int(beta)]
-                beta = beta + 1
+
+            beta = beta + 1
 
         if "Run" in list(data.keys()):
             waveN = data["M"][0 : int(Max_omega)] * 1e6
@@ -239,6 +241,13 @@ class NeaReader(FileFormat, SpectralFileFormat):
                 Orange.data.ContinuousVariable.make("row"),
                 Orange.data.ContinuousVariable.make("column"),
                 Orange.data.ContinuousVariable.make("run"),
+                Orange.data.StringVariable.make("channel"),
+            ]
+        elif "Wavelength" in list(data.keys()):
+            waveN = data["Wavelength"][0 : int(Max_omega)]
+            metas = [
+                Orange.data.ContinuousVariable.make("row"),
+                Orange.data.ContinuousVariable.make("column"),
                 Orange.data.StringVariable.make("channel"),
             ]
         else:
@@ -697,4 +706,9 @@ class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
 
 
 if __name__ == "__main__":
-    pass
+    from Orange.data import dataset_dirs
+    fn = 'NeaReaderMultichannel_test/Test_Au_Fourier_Scan_Synchrotron.txt'
+    absolute_filename = FileFormat.locate(fn, dataset_dirs)
+    r = NeaReader(absolute_filename)
+    r.sheet = "O2A"
+    d = r.read()
