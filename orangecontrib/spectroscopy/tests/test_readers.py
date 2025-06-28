@@ -467,6 +467,19 @@ class TestNea(unittest.TestCase):
         self.assertEqual("O1A", data.metas[8][2])
         np.testing.assert_almost_equal(data.X[8, 1], 57.0)
 
+    def test_ifg_read(self):
+        fn = 'NeaReaderMultichannel_test/Test_Au_Fourier_Scan_Synchrotron.txt'
+        absolute_filename = FileFormat.locate(fn, dataset_dirs)
+        reader = NeaReader(absolute_filename)
+        reader.sheet = "All"
+        data = reader.read()
+        self.assertEqual(len(data), 30)
+        self.assertEqual("channel", data.domain.metas[3].name)
+        self.assertEqual("Z", data.metas[0][3])
+        self.assertEqual("M", data.metas[1][3])
+        self.assertEqual("O0A", data.metas[2][3])
+        self.assertEqual("O0P", data.metas[3][3])
+
 
 class TestNeaGSF(unittest.TestCase):
 
