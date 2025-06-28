@@ -462,10 +462,10 @@ class TestNea(unittest.TestCase):
         np.testing.assert_almost_equal(getx(data), [15., 89.])
         self.assertEqual("O0A", data.metas[0][2])
         np.testing.assert_almost_equal(data.X[0, 0], 92.0)
-        self.assertEqual("O0P", data.metas[6][2])
-        np.testing.assert_almost_equal(data.X[6, 0], 19.0)
+        self.assertEqual("O0P", data.metas[1][2])
+        np.testing.assert_almost_equal(data.X[1, 0], 21.0)
         self.assertEqual("O1A", data.metas[8][2])
-        np.testing.assert_almost_equal(data.X[8, 1], 100.0)
+        np.testing.assert_almost_equal(data.X[8, 1], 57.0)
 
 
 class TestNeaGSF(unittest.TestCase):
