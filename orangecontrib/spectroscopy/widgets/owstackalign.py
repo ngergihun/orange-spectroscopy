@@ -23,6 +23,7 @@ from orangecontrib.spectroscopy.io.util import _spectra_from_image
 from orangecontrib.spectroscopy.widgets.gui import lineEditIntRange
 from orangecontrib.spectroscopy.utils import NanInsideHypercube, InvalidAxisException, \
     get_hypercube
+from orangecontrib.spectroscopy.preprocess.utils import WrongReferenceException
 
 
 # the following line imports the copied code so that
@@ -113,6 +114,9 @@ def process_stack(data, xat, yat, upsample_factor=100, use_sobel=False, ref_fram
                                         filterfn=filterfn)
     else:
         # check the attribute thing later
+        if refdata.X.shape[1] != data.X.shape[1]:
+            raise WrongReferenceException("Reference data must have the same number of frames as the input data.")
+        
         hypercube_ref, lsx_ref, lsy_ref = get_hypercube(refdata, xat, yat)
         if bn.anynan(hypercube_ref):
             raise NanInsideHypercube(True)
@@ -160,6 +164,10 @@ class OWStackAlign(OWWidget):
     class Error(OWWidget.Error):
         nan_in_image = Msg("Unknown values within images: {} unknowns")
         invalid_axis = Msg("Invalid axis: {}")
+        wrong_reference = Msg("Wrong reference: {}")
+
+    class Warning(OWWidget.Warning):
+        missing_reference = Msg("Missing reference: {}")
 
     autocommit = settings.Setting(True)
 
@@ -198,7 +206,7 @@ class OWStackAlign(OWWidget):
         refbox = gui.widgetBox(self.controlArea, "Tracking images")
         gui.checkBox(refbox, self, "use_refinput",
                      label="Use reference images",
-                     callback=self._ref_frame_changed)
+                     callback=self._use_ref_changed)
         
         box = gui.widgetBox(self.controlArea, "Parameters")
 
@@ -242,6 +250,11 @@ class OWStackAlign(OWWidget):
     def _ref_frame_changed(self):
         self._sanitize_ref_frame()
         self.commit.deferred()
+
+    def _use_ref_changed(self):
+        if self.use_refinput and self.refdata is None:
+            self.Warning.missing_reference("Reference is not connected. Using data only.")
+        self._ref_frame_changed()
 
     def _sobel_changed(self):
         self.commit.deferred()
@@ -305,6 +318,8 @@ class OWStackAlign(OWWidget):
                 self.Error.nan_in_image(e.args[0])
             except InvalidAxisException as e:
                 self.Error.invalid_axis(e.args[0])
+            except WrongReferenceException as e:
+                self.Error.wrong_reference(e.args[0])
             else:
                 frames = np.linspace(1, shifts.shape[0], shifts.shape[0])
                 self.plotview.plotItem.plot(frames, shifts[:, 0],
@@ -332,5 +347,6 @@ class OWStackAlign(OWWidget):
 if __name__ == "__main__":  # pragma: no cover
     from orangecontrib.spectroscopy.tests.test_owalignstack import stxm_diamond
     rev = Orange.data.Table("REVlaserAmid.xyz")
+    rev_c = Orange.data.Table("REVlaserAmid copy.xyz")
     from Orange.widgets.utils.widgetpreview import WidgetPreview
     WidgetPreview(OWStackAlign).run(set_data=rev)
