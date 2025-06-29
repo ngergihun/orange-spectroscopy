@@ -146,6 +146,7 @@ if __name__ == '__main__':
             'bottleneck',
             'pebble',
             'agilent-format>=0.4.5'
+            'pySNOM>=0.2.0',
         ],
         extras_require={
             'test': ['coverage'],
