@@ -26,7 +26,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
         elif self.filename.endswith(".txt"):
             data_reader = readers.NeaHeaderReader(self.filename)
             channels, _ = data_reader.read()
-            channels.append("All")
+            channels.insert(0,"All")
             channels = [
                 c
                 for c in channels
@@ -707,10 +707,3 @@ class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
         return scaled_domain, out_data, meta_data
 
 
-if __name__ == "__main__":
-    from Orange.data import dataset_dirs
-    fn = 'NeaReaderMultichannel_test/Test_Au_Fourier_Scan_Synchrotron.txt'
-    absolute_filename = FileFormat.locate(fn, dataset_dirs)
-    r = NeaReader(absolute_filename)
-    r.sheet = "O2A"
-    d = r.read()
