@@ -13,8 +13,13 @@ from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
 
 from pySNOM import readers
 
+
 class NeaReader(FileFormat, SpectralFileFormat):
-    EXTENSIONS = (".nea",".txt",".gsf",)
+    EXTENSIONS = (
+        ".nea",
+        ".txt",
+        ".gsf",
+    )
     DESCRIPTION = "NeaSPEC"
 
     @property
@@ -26,7 +31,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
         elif self.filename.endswith(".txt"):
             data_reader = readers.NeaHeaderReader(self.filename)
             channels, _ = data_reader.read()
-            channels.insert(0,"All")
+            channels.insert(0, "All")
             channels = [
                 c
                 for c in channels
@@ -179,11 +184,11 @@ class NeaReader(FileFormat, SpectralFileFormat):
                 for jch in range(N_chn):
                     rawdata = data[channelnames[jch]]
                     rundata = rawdata[
-                        j * Max_run * Max_omega + jrun * Max_omega : j * Max_run * Max_omega + (jrun + 1) * Max_omega
+                        j * Max_run * Max_omega
+                        + jrun * Max_omega : j * Max_run * Max_omega
+                        + (jrun + 1) * Max_omega
                     ]
-                    M[
-                        jch + N_chn * jrun + (Max_run * N_chn * j), :
-                    ] = rundata
+                    M[jch + N_chn * jrun + (Max_run * N_chn * j), :] = rundata
 
         # Preparing metas
         meta_cols = 3
@@ -196,7 +201,9 @@ class NeaReader(FileFormat, SpectralFileFormat):
         alpha = 0
         beta = 0
 
-        for idx, i in enumerate(range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run)):
+        for _, i in enumerate(
+            range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run)
+        ):
             if beta == Max_row:
                 beta = 0
                 alpha = alpha + 1
@@ -411,6 +418,7 @@ class NeaReaderGSF(FileFormat, SpectralFileFormat):
     def _gsf_reader(self, path):
         X, _, _ = reader_gsf(path)
         return np.asarray(X)
+
 
 class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
     EXTENSIONS = (".txt",)
@@ -705,5 +713,3 @@ class NeaReaderMultiChannel(FileFormat, SpectralFileFormat):
         self.info["Channel Data Type"] = "Polar", "i.e. Amplitude and Phase separated"
         meta_data.attributes = self.info
         return scaled_domain, out_data, meta_data
-
-
