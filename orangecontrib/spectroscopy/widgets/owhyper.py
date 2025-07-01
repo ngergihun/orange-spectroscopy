@@ -1630,6 +1630,7 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
 
     class Inputs:
         data = Input("Data", Orange.data.Table, default=True)
+        vis_image = Input("Visible Image", Orange.data.Table, default=True)
 
     class Outputs(SelectionOutputsMixin.Outputs):
         pass
@@ -2098,6 +2099,14 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
         self.imageplot.update_view()
         self.output_image_selection()
         self.update_visible_image()
+
+    @Inputs.vis_image
+    def set_visible_image(self, vis_imagetable):
+        # Extract the first column of the datatable
+        # Reshape it to image
+        # Create VisibleImage object
+        # Assign it to the datatable attributes
+        pass
 
     def set_visual_settings(self, key, value):
         im_setter = self.imageplot.parameter_setter
