@@ -42,7 +42,7 @@ from Orange.widgets.visualize.utils.plotutils import GraphicsView, PlotItem, Axi
 from orangewidget.utils.visual_settings_dlg import VisualSettingsDialog
 
 from orangecontrib.spectroscopy.preprocess import Integrate
-from orangecontrib.spectroscopy.utils import values_to_linspace, index_values_nan, split_to_size, get_ndim_hyperspec, get_ndim_hyperspec_withoutdomain
+from orangecontrib.spectroscopy.utils import values_to_linspace, index_values_nan, split_to_size, get_ndim_hyperspec
 
 from orangecontrib.spectroscopy.widgets.owspectra import InteractiveViewBox, \
     MenuFocus, CurvePlot, SELECTONE, SELECTMANY, INDIVIDUAL, AVERAGE, \
@@ -2106,27 +2106,39 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
     def set_vimage(self, vdata):
         # Extract the first column of X
         # Reshape it to image
-        hypercube, ls = get_ndim_hyperspec(
-                vdata, (self.imageplot.attr_x,self.imageplot.attr_y)
-            )
-        img = np.rot90(hypercube[:, :, 0])
-        # Create VisibleImage object
-        im = Image.fromarray(np.uint8((img-np.min(img))/(np.max(img)-np.min(img)) * 255))
-        im = im.convert('L')
+        if 'map_x' and 'map_y' in vdata.domain.attributes:
+            attrx = vdata.domain['map_x']
+            attry = vdata.domain['map_y']
+        elif 'row' and 'column' in vdata.domain.attributes:
+            attrx = vdata.domain['column']
+            attry = vdata.domain['row']
+        else:
+            attrx = None
+            attry = None
+        
+        if attrx is not None or attry is not None:
+            hypercube, ls = get_ndim_hyperspec(
+                    vdata, (self.imageplot.attr_x,self.imageplot.attr_y)
+                )
+            
+            img = np.rot90(hypercube[:, :, 0])
+            # Create VisibleImage object
+            im = Image.fromarray(np.uint8((img-np.min(img))/(np.max(img)-np.min(img)) * 255))
+            im = im.convert('L')
 
-        img_bytes = io.BytesIO()
-        im.save(img_bytes, format='PNG')
-        width = np.abs(ls[0][1]-ls[0][0])
-        height = np.abs(ls[1][1]-ls[1][0])
-        posx = ls[0][0]
-        posy = ls[1][0]
-        vimage = ConstantBytesVisibleImage(name="External Image",
-                                pos_x=posx,
-                                pos_y=posy,
-                                size_x=width,
-                                size_y=height,
-                                image_bytes=img_bytes,
-                                   )
+            img_bytes = io.BytesIO()
+            im.save(img_bytes, format='PNG')
+            width = np.abs(ls[0][1]-ls[0][0])
+            height = np.abs(ls[1][1]-ls[1][0])
+            posx = ls[0][0]
+            posy = ls[1][0]
+            vimage = ConstantBytesVisibleImage(name="External Image",
+                                    pos_x=posx,
+                                    pos_y=posy,
+                                    size_x=width,
+                                    size_y=height,
+                                    image_bytes=img_bytes,
+                                    )
         
         # Assign it to the datatable attributes
         if self.data is not None:
