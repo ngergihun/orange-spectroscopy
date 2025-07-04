@@ -247,23 +247,23 @@ class NeaReader(FileFormat, SpectralFileFormat):
         if "Run" in list(data.keys()):
             waveN = data["M"][0 : int(Max_omega)] * 1e6
             metas = [
-                Orange.data.ContinuousVariable.make("row"),
-                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
                 Orange.data.ContinuousVariable.make("run"),
                 Orange.data.StringVariable.make("channel"),
             ]
         elif "Wavelength" in list(data.keys()):
             waveN = data["Wavelength"][0 : int(Max_omega)]
             metas = [
-                Orange.data.ContinuousVariable.make("row"),
-                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
                 Orange.data.StringVariable.make("channel"),
             ]
         else:
             waveN = data["Wavenumber"][0 : int(Max_omega)]
             metas = [
-                Orange.data.ContinuousVariable.make("row"),
-                Orange.data.ContinuousVariable.make("column"),
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
                 Orange.data.StringVariable.make("channel"),
             ]
 
