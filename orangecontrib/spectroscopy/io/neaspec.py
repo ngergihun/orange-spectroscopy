@@ -11,6 +11,276 @@ from orangecontrib.spectroscopy.io.gsf import reader_gsf
 from orangecontrib.spectroscopy.io.util import SpectralFileFormat, _spectra_from_image
 from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
 
+from pySNOM import readers
+
+class GeneralNeaReader(FileFormat, SpectralFileFormat):
+    EXTENSIONS = (
+        ".nea",
+        ".txt",
+        ".gsf",
+    )
+    DESCRIPTION = "NeaSPEC"
+
+    @property
+    def sheets(self):
+        if self.filename.endswith(".nea"):
+            # For old neaspec filenformat
+            data_reader = readers.NeaFileLegacyReader(self.filename)
+            data, _ = data_reader.read()
+            channels = list(data.keys())[3:]
+        elif self.filename.endswith(".txt"):
+            data_reader = readers.NeaHeaderReader(self.filename)
+            channels, _ = data_reader.read()
+            channels.insert(0, "All")
+            channels = [c for c in channels if c not in ("Row", "Column", "Run", "Omega", "Wavenumber", "Depth")]
+        else:
+            channels = []
+
+        return channels
+    
+    @staticmethod
+    def detect_image_signaltype(filename):
+        # Copied from NeaImageGSF
+        # We will need to change this when neaspec comes up with new channel names
+        channel_strings = ["M(.?)A", "M(.?)P", "O(.?)A", "O(.?)P", "Z C", "Z raw"]
+        channel_name = None
+
+        for pattern in channel_strings:
+            if re.search(pattern, filename) is not None:
+                channel_name = re.search(pattern, filename)[0]
+
+        if channel_name is None:
+            signal_type = "Topography"
+        elif "P" in channel_name:
+            signal_type = "Phase"
+        elif "A" in channel_name:
+            signal_type = "Amplitude"
+        else:
+            signal_type = "Topography"
+
+        return signal_type
+
+    def read_spectra(self):
+        if self.filename.endswith(".gsf"):
+            # In case of GSF images the wavelength is 
+            # in a separate file or in the filenames
+            wn = readers.get_wl_from_filename(self.filename)
+            if wn is None:
+                wn = readers.get_wl_from_infofile(self.filename)
+            if wn is None:
+                wn = 1.0
+
+            X, XRr, YRr = reader_gsf(self.filename)
+            features, final_data, meta_data = _spectra_from_image(
+                X, np.array([wn]), XRr, YRr
+            )
+            signal_type = self.detect_image_signaltype(self.filename)
+            meta_data.attributes["measurement.signaltype"] = signal_type
+
+            # TODO: add all the meta info here from the Gwyddion header
+            return features, final_data, meta_data
+
+        if self.filename.endswith(".nea"):
+            # For old neaspec format
+            data_reader = readers.NeaFileLegacyReader(self.filename)
+            data, measparams = data_reader.read()
+        else:
+            # Current fileformat
+            data_reader = readers.NeaSpectralReader(self.filename)
+            data, measparams = data_reader.read()
+
+        if self.sheet:
+            chn = self.sheet
+        else:
+            chn = self.sheets[0]
+            self.sheet = chn
+
+        if chn == "All":
+            N_chn = len(self.sheets) - 1
+        else:
+            N_chn = 1
+
+        # There are strored in the measparams
+        Max_row = int(np.max(data["Row"]) + 1)
+        Max_col = int(np.max(data["Column"]) + 1)
+
+        # Run is only there for ifg files
+        if "Run" in list(data.keys()):
+            Max_run = int(np.max(data["Run"]) + 1)
+        else:
+            Max_run = int(1)
+
+        if self.filename.endswith(".nea"):
+            Max_omega = int(measparams["PixelArea"][2])
+        else:
+            # Neaspec have several the naming 
+            # for the indepedent variable index
+            if "Depth" in list(data.keys()):
+                Max_omega = int(np.max(data["Depth"]) + 1)
+            elif "Index" in list(data.keys()):
+                Max_omega = int(np.max(data["Index"]) + 1)
+            elif "Omega" in list(data.keys()):
+                Max_omega = int(np.max(data["Omega"]) + 1)
+            else:
+                raise ValueError("Max_omega not found")
+
+        # Number of rows and cols for X
+        N_rows = Max_row * Max_col * Max_run * N_chn
+        N_cols = Max_omega
+
+        # Calculate coordinates for each point if parameters are given
+        if "Rotation" in list(measparams.keys()):
+            angle = np.radians(measparams["Rotation"])
+        else:
+            angle = 0
+        if "ScanArea" in list(measparams.keys()):
+            width = measparams["ScanArea"][0]
+            height = measparams["ScanArea"][1]
+        else:
+            width = Max_row
+            height = Max_col
+        if "ScannerCenterPosition" in list(measparams.keys()):
+            xoff = measparams["ScannerCenterPosition"][0]
+            yoff = measparams["ScannerCenterPosition"][1]
+        else:
+            xoff = 0.0
+            yoff = 0.0
+
+        # Create the list of points centered to the origo
+        # x = np.linspace(-width / 2, width / 2, Max_row)
+        # y = np.linspace(-height / 2, height / 2, Max_col)
+        X, Y = np.meshgrid(
+                            np.linspace(-width / 2, width / 2, Max_row), 
+                            np.linspace(-height / 2, height / 2, Max_col)
+                           )
+        xvec = X.ravel()
+        yvec = Y.ravel()
+        xpos = []
+        ypos = []
+        # Rotated the coordinate system to match orientation
+        c, s = np.cos(angle), np.sin(angle)
+        R = np.array(((c, -s), (s, c)))
+        for i in range(len(xvec)):
+            vec = np.array([xvec[i], yvec[i]])
+            vec = np.matmul(R, vec)
+            vec[0] += xoff
+            vec[1] += yoff
+            xpos.append(vec[0])
+            ypos.append(vec[1])
+        # Reshape 
+        xpos = np.reshape(np.array(xpos), (Max_col, Max_row))
+        ypos = np.reshape(np.array(ypos), (Max_col, Max_row))
+
+        # Transform actual data
+        M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
+
+        if chn == "All":
+            channelnames = [c for c in self.sheets if c != "All"]
+        else:
+            channelnames = [chn]
+
+        for j in range(int(Max_row * Max_col)):
+            row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
+            assert np.all(row_value == row_value[0])
+            col_value = data["Column"][j * (Max_omega) : (j + 1) * (Max_omega)]
+            assert np.all(col_value == col_value[0])
+
+            for jrun in range(Max_run):
+                for jch in range(N_chn):
+                    rawdata = data[channelnames[jch]]
+                    rundata = rawdata[
+                        j * Max_run * Max_omega
+                        + jrun * Max_omega : j * Max_run * Max_omega
+                        + (jrun + 1) * Max_omega
+                    ]
+                    M[jch + N_chn * jrun + (Max_run * N_chn * j), :] = rundata
+
+        # Preparing metas
+        meta_cols = 3
+        if "Run" in list(data.keys()):
+            meta_cols = 4
+
+        Meta_data = np.zeros((int(N_rows), meta_cols), dtype="object")
+
+        # Filling up meta_data with positions, run and channelnames
+        alpha = 0
+        beta = 0
+
+        for _, i in enumerate(
+            range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run)
+        ):
+            if beta == Max_row:
+                beta = 0
+                alpha = alpha + 1
+
+            for jrun in range(Max_run):
+                Meta_data[
+                    i
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
+                    -1,
+                ] = channelnames
+
+                if "Run" in list(data.keys()):
+                    Meta_data[
+                        i
+                        + (Max_row * Max_col * N_chn * jrun) : i
+                        + N_chn
+                        + (Max_row * Max_col * N_chn * jrun),
+                        -2,
+                    ] = jrun
+
+                Meta_data[
+                    i
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
+                    1,
+                ] = ypos[int(alpha), int(beta)]
+
+                Meta_data[
+                    i
+                    + (Max_row * Max_col * N_chn * jrun) : i
+                    + N_chn
+                    + (Max_row * Max_col * N_chn * jrun),
+                    0,
+                ] = xpos[int(alpha), int(beta)]
+
+            beta = beta + 1
+
+        # Neaspec tends to name the independent variable differently all the time
+        # Try to prepare for all the names we know so far
+        if "Run" in list(data.keys()):
+            waveN = data["M"][0 : int(Max_omega)] * 1e6
+            metas = [
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
+                Orange.data.ContinuousVariable.make("run"),
+                Orange.data.StringVariable.make("channel"),
+            ]
+        elif "Wavelength" in list(data.keys()):
+            waveN = data["Wavelength"][0 : int(Max_omega)]
+            metas = [
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
+                Orange.data.StringVariable.make("channel"),
+            ]
+        else:
+            waveN = data["Wavenumber"][0 : int(Max_omega)]
+            metas = [
+                Orange.data.ContinuousVariable.make(MAP_X_VAR),
+                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
+                Orange.data.StringVariable.make("channel"),
+            ]
+
+        domain = Orange.data.Domain([], None, metas=metas)
+        meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
+        meta_data.attributes = measparams
+
+        return waveN, M, meta_data
+   
+
 class NeaReader(FileFormat, SpectralFileFormat):
 
     EXTENSIONS = (".nea", ".txt")
