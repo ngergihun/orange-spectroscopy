@@ -13,6 +13,7 @@ from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
 
 from pySNOM import readers
 
+
 class NeaReader(FileFormat, SpectralFileFormat):
     EXTENSIONS = (
         ".nea",
@@ -32,12 +33,16 @@ class NeaReader(FileFormat, SpectralFileFormat):
             data_reader = readers.NeaHeaderReader(self.filename)
             channels, _ = data_reader.read()
             channels.insert(0, "All")
-            channels = [c for c in channels if c not in ("Row", "Column", "Run", "Omega", "Wavenumber", "Depth")]
+            channels = [
+                c
+                for c in channels
+                if c not in ("Row", "Column", "Run", "Omega", "Wavenumber", "Depth")
+            ]
         else:
             channels = []
 
         return channels
-    
+
     @staticmethod
     def detect_image_signaltype(filename):
         # Copied from NeaImageGSF
@@ -62,7 +67,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
     def read_spectra(self):
         if self.filename.endswith(".gsf"):
-            # In case of GSF images the wavelength is 
+            # In case of GSF images the wavelength is
             # in a separate file or in the filenames
             wn = readers.get_wl_from_filename(self.filename)
             if wn is None:
@@ -113,7 +118,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
         if self.filename.endswith(".nea"):
             Max_omega = int(measparams["PixelArea"][2])
         else:
-            # Neaspec have several the naming 
+            # Neaspec have several the naming
             # for the indepedent variable index
             if "Depth" in list(data.keys()):
                 Max_omega = int(np.max(data["Depth"]) + 1)
@@ -150,9 +155,9 @@ class NeaReader(FileFormat, SpectralFileFormat):
         # x = np.linspace(-width / 2, width / 2, Max_row)
         # y = np.linspace(-height / 2, height / 2, Max_col)
         X, Y = np.meshgrid(
-                            np.linspace(-width / 2, width / 2, Max_row), 
-                            np.linspace(-height / 2, height / 2, Max_col)
-                           )
+            np.linspace(-width / 2, width / 2, Max_row),
+            np.linspace(-height / 2, height / 2, Max_col),
+        )
         xvec = X.ravel()
         yvec = Y.ravel()
         xpos = []
@@ -167,7 +172,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
             vec[1] += yoff
             xpos.append(vec[0])
             ypos.append(vec[1])
-        # Reshape 
+        # Reshape
         xpos = np.reshape(np.array(xpos), (Max_col, Max_row))
         ypos = np.reshape(np.array(ypos), (Max_col, Max_row))
 
