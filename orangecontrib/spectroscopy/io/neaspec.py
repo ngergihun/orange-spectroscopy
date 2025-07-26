@@ -129,12 +129,16 @@ class NeaReader(FileFormat, SpectralFileFormat):
             else:
                 raise ValueError("Variable index not found")
             
-        # Run is only there for ifg files
-        Max_run = 1
+        Max_run = 1 # Run is only there for ifg files
         meta_cols = 3 # number of meta columns (used later)
+        is_ifg = False
+
         if "Run" in data:
+            is_ifg = True
             Max_run = len(np.unique(data["Run"]))
             meta_cols = 4
+            avg_maxis = np.median(np.reshape(data["M"],(Max_omega, Max_row * Max_col * Max_run)), axis=1)
+            new_maxis = np.linspace(np.min(avg_maxis), np.max(avg_maxis), Max_omega)
 
         # Number of rows and cols for X
         N_rows = Max_row * Max_col * Max_run * N_chn
@@ -198,6 +202,16 @@ class NeaReader(FileFormat, SpectralFileFormat):
                         + jrun * Max_omega : j * Max_run * Max_omega
                         + (jrun + 1) * Max_omega
                     ]
+                    # Reinterpolate data if it is interferogram
+                    if is_ifg:
+                        current_axis = data["M"][
+                            j * Max_run * Max_omega
+                            + jrun * Max_omega : j * Max_run * Max_omega
+                            + (jrun + 1) * Max_omega
+                        ]
+                        f = interp1d(current_axis, rundata)
+                        rundata = f(new_maxis)
+
                     M[jch + N_chn * jrun + (Max_run * N_chn * j), :] = rundata
 
         # Preparing metas
@@ -223,7 +237,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     -1,
                 ] = channelnames
 
-                if "Run" in data:
+                if is_ifg:
                     Meta_data[
                         i
                         + (Max_row * Max_col * N_chn * jrun) : i
@@ -258,8 +272,8 @@ class NeaReader(FileFormat, SpectralFileFormat):
             ]    
         # Neaspec tends to name the independent variable differently all the time
         # Try to prepare for all the names we know so far
-        if "Run" in data:
-            waveN = data["M"][0 : Max_omega] * 1e6
+        if is_ifg:
+            waveN = new_maxis * 1e6
             metas.insert(2, Orange.data.ContinuousVariable.make("run"))
         else:
             possible_names = ["Wavenumber", "Wavelength"]
