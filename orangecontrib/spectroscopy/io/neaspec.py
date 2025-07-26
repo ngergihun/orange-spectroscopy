@@ -29,6 +29,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
             data_reader = readers.NeaFileLegacyReader(self.filename)
             data, _ = data_reader.read()
             channels = list(data.keys())[3:]
+            channels.insert(0, "All")
         elif self.filename.endswith(".txt"):
             data_reader = readers.NeaHeaderReader(self.filename)
             channels, _ = data_reader.read()
