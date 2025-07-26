@@ -77,6 +77,10 @@ class NeaReader(FileFormat, SpectralFileFormat):
                 wn = 1.0
 
             X, XRr, YRr = reader_gsf(self.filename)
+            # Flip YRr to match the coordinates
+            # TODO: this should be correccted in the reader_gsf function
+            # as it results in incorrect coordinates
+            YRr = np.flip(YRr, axis=0)
             features, final_data, meta_data = _spectra_from_image(
                 X, np.array([wn]), XRr, YRr
             )
@@ -143,8 +147,8 @@ class NeaReader(FileFormat, SpectralFileFormat):
             width = measparams["ScanArea"][0]
             height = measparams["ScanArea"][1]
         else:
-            width = Max_row
-            height = Max_col
+            width = Max_col if Max_col > 1 else 0
+            height = Max_row if Max_row > 1 else 0
         if "ScannerCenterPosition" in measparams:
             xoff = measparams["ScannerCenterPosition"][0]
             yoff = measparams["ScannerCenterPosition"][1]
@@ -153,11 +157,9 @@ class NeaReader(FileFormat, SpectralFileFormat):
             yoff = 0.0
 
         # Create the list of points centered to the origo
-        # x = np.linspace(-width / 2, width / 2, Max_row)
-        # y = np.linspace(-height / 2, height / 2, Max_col)
         X, Y = np.meshgrid(
-            np.linspace(-width / 2, width / 2, Max_row),
-            np.linspace(-height / 2, height / 2, Max_col),
+            np.linspace(-width / 2, width / 2, Max_col),
+            np.linspace(-height / 2, height / 2, Max_row),
         )
         xvec = X.ravel()
         yvec = Y.ravel()
