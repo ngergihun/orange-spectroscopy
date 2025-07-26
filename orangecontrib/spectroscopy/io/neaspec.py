@@ -107,18 +107,13 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
         if chn == "All":
             N_chn = len(self.sheets) - 1
+            channelnames = [c for c in self.sheets if c != "All"]
         else:
             N_chn = 1
+            channelnames = [chn]
 
-        # There are strored in the measparams
         Max_row = len(np.unique(data["Row"]))
         Max_col = len(np.unique(data["Column"]))
-
-        # Run is only there for ifg files
-        if "Run" in data:
-            Max_run = len(np.unique(data["Run"]))
-        else:
-            Max_run = 1
 
         if self.filename.endswith(".nea"):
             Max_omega = measparams["PixelArea"][2]
@@ -133,6 +128,13 @@ class NeaReader(FileFormat, SpectralFileFormat):
                 Max_omega = len(np.unique(data["Omega"]))
             else:
                 raise ValueError("Variable index not found")
+            
+        # Run is only there for ifg files
+        Max_run = 1
+        meta_cols = 3 # number of meta columns (used later)
+        if "Run" in data:
+            Max_run = len(np.unique(data["Run"]))
+            meta_cols = 4
 
         # Number of rows and cols for X
         N_rows = Max_row * Max_col * Max_run * N_chn
@@ -182,11 +184,6 @@ class NeaReader(FileFormat, SpectralFileFormat):
         # Transform actual data
         M = np.full((N_rows, N_cols), np.nan, dtype="float")
 
-        if chn == "All":
-            channelnames = [c for c in self.sheets if c != "All"]
-        else:
-            channelnames = [chn]
-
         for j in range(Max_row * Max_col):
             row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
             assert np.all(row_value == row_value[0])
@@ -204,10 +201,6 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     M[jch + N_chn * jrun + (Max_run * N_chn * j), :] = rundata
 
         # Preparing metas
-        meta_cols = 3
-        if "Run" in data:
-            meta_cols = 4
-
         Meta_data = np.zeros((N_rows, meta_cols), dtype="object")
 
         # Filling up meta_data with positions, run and channelnames
@@ -257,33 +250,25 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
             beta = beta + 1
 
+        # Prepare metas
+        metas = [
+                Orange.data.ContinuousVariable(MAP_X_VAR),
+                Orange.data.ContinuousVariable(MAP_Y_VAR),
+                Orange.data.StringVariable("channel"),
+            ]    
         # Neaspec tends to name the independent variable differently all the time
         # Try to prepare for all the names we know so far
         if "Run" in data:
             waveN = data["M"][0 : Max_omega] * 1e6
-            metas = [
-                Orange.data.ContinuousVariable.make(MAP_X_VAR),
-                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
-                Orange.data.ContinuousVariable.make("run"),
-                Orange.data.StringVariable.make("channel"),
-            ]
-        elif "Wavelength" in data:
-            waveN = data["Wavelength"][0 : Max_omega]
-            metas = [
-                Orange.data.ContinuousVariable.make(MAP_X_VAR),
-                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
-                Orange.data.StringVariable.make("channel"),
-            ]
+            metas.insert(2, Orange.data.ContinuousVariable.make("run"))
         else:
-            waveN = data["Wavenumber"][0 : Max_omega]
-            metas = [
-                Orange.data.ContinuousVariable.make(MAP_X_VAR),
-                Orange.data.ContinuousVariable.make(MAP_Y_VAR),
-                Orange.data.StringVariable.make("channel"),
-            ]
+            possible_names = ["Wavenumber", "Wavelength"]
+            varname = [name for name in possible_names if name in data][0]
+            waveN = data[varname][0 : Max_omega]
 
         domain = Orange.data.Domain([], None, metas=metas)
         meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
+        # Add measurement parameters to attributes
         meta_data.attributes = measparams
 
         return waveN, M, meta_data
