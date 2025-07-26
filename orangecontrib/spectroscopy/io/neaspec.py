@@ -106,45 +106,45 @@ class NeaReader(FileFormat, SpectralFileFormat):
             N_chn = 1
 
         # There are strored in the measparams
-        Max_row = int(np.max(data["Row"]) + 1)
-        Max_col = int(np.max(data["Column"]) + 1)
+        Max_row = len(np.unique(data["Row"]))
+        Max_col = len(np.unique(data["Column"]))
 
         # Run is only there for ifg files
-        if "Run" in list(data.keys()):
-            Max_run = int(np.max(data["Run"]) + 1)
+        if "Run" in data:
+            Max_run = len(np.unique(data["Run"]))
         else:
-            Max_run = int(1)
+            Max_run = 1
 
         if self.filename.endswith(".nea"):
-            Max_omega = int(measparams["PixelArea"][2])
+            Max_omega = measparams["PixelArea"][2]
         else:
             # Neaspec have several the naming
             # for the indepedent variable index
-            if "Depth" in list(data.keys()):
-                Max_omega = int(np.max(data["Depth"]) + 1)
-            elif "Index" in list(data.keys()):
-                Max_omega = int(np.max(data["Index"]) + 1)
-            elif "Omega" in list(data.keys()):
-                Max_omega = int(np.max(data["Omega"]) + 1)
+            if "Depth" in data:
+                Max_omega = len(np.unique(data["Depth"]))
+            elif "Index" in data:
+                Max_omega = len(np.unique(data["Index"]))
+            elif "Omega" in data:
+                Max_omega = len(np.unique(data["Omega"]))
             else:
-                raise ValueError("Max_omega not found")
+                raise ValueError("Variable index not found")
 
         # Number of rows and cols for X
         N_rows = Max_row * Max_col * Max_run * N_chn
         N_cols = Max_omega
 
         # Calculate coordinates for each point if parameters are given
-        if "Rotation" in list(measparams.keys()):
+        if "Rotation" in measparams:
             angle = np.radians(measparams["Rotation"])
         else:
             angle = 0
-        if "ScanArea" in list(measparams.keys()):
+        if "ScanArea" in measparams:
             width = measparams["ScanArea"][0]
             height = measparams["ScanArea"][1]
         else:
             width = Max_row
             height = Max_col
-        if "ScannerCenterPosition" in list(measparams.keys()):
+        if "ScannerCenterPosition" in measparams:
             xoff = measparams["ScannerCenterPosition"][0]
             yoff = measparams["ScannerCenterPosition"][1]
         else:
@@ -177,14 +177,14 @@ class NeaReader(FileFormat, SpectralFileFormat):
         ypos = np.reshape(np.array(ypos), (Max_col, Max_row))
 
         # Transform actual data
-        M = np.full((int(N_rows), int(N_cols)), np.nan, dtype="float")
+        M = np.full((N_rows, N_cols), np.nan, dtype="float")
 
         if chn == "All":
             channelnames = [c for c in self.sheets if c != "All"]
         else:
             channelnames = [chn]
 
-        for j in range(int(Max_row * Max_col)):
+        for j in range(Max_row * Max_col):
             row_value = data["Row"][j * Max_omega : (j + 1) * Max_omega]
             assert np.all(row_value == row_value[0])
             col_value = data["Column"][j * (Max_omega) : (j + 1) * (Max_omega)]
@@ -202,10 +202,10 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
         # Preparing metas
         meta_cols = 3
-        if "Run" in list(data.keys()):
+        if "Run" in data:
             meta_cols = 4
 
-        Meta_data = np.zeros((int(N_rows), meta_cols), dtype="object")
+        Meta_data = np.zeros((N_rows, meta_cols), dtype="object")
 
         # Filling up meta_data with positions, run and channelnames
         alpha = 0
@@ -227,7 +227,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     -1,
                 ] = channelnames
 
-                if "Run" in list(data.keys()):
+                if "Run" in data:
                     Meta_data[
                         i
                         + (Max_row * Max_col * N_chn * jrun) : i
@@ -242,7 +242,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     + N_chn
                     + (Max_row * Max_col * N_chn * jrun),
                     1,
-                ] = ypos[int(alpha), int(beta)]
+                ] = ypos[alpha, beta]
 
                 Meta_data[
                     i
@@ -250,29 +250,29 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     + N_chn
                     + (Max_row * Max_col * N_chn * jrun),
                     0,
-                ] = xpos[int(alpha), int(beta)]
+                ] = xpos[alpha, beta]
 
             beta = beta + 1
 
         # Neaspec tends to name the independent variable differently all the time
         # Try to prepare for all the names we know so far
-        if "Run" in list(data.keys()):
-            waveN = data["M"][0 : int(Max_omega)] * 1e6
+        if "Run" in data:
+            waveN = data["M"][0 : Max_omega] * 1e6
             metas = [
                 Orange.data.ContinuousVariable.make(MAP_X_VAR),
                 Orange.data.ContinuousVariable.make(MAP_Y_VAR),
                 Orange.data.ContinuousVariable.make("run"),
                 Orange.data.StringVariable.make("channel"),
             ]
-        elif "Wavelength" in list(data.keys()):
-            waveN = data["Wavelength"][0 : int(Max_omega)]
+        elif "Wavelength" in data:
+            waveN = data["Wavelength"][0 : Max_omega]
             metas = [
                 Orange.data.ContinuousVariable.make(MAP_X_VAR),
                 Orange.data.ContinuousVariable.make(MAP_Y_VAR),
                 Orange.data.StringVariable.make("channel"),
             ]
         else:
-            waveN = data["Wavenumber"][0 : int(Max_omega)]
+            waveN = data["Wavenumber"][0 : Max_omega]
             metas = [
                 Orange.data.ContinuousVariable.make(MAP_X_VAR),
                 Orange.data.ContinuousVariable.make(MAP_Y_VAR),
