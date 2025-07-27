@@ -147,7 +147,6 @@ class NeaReader(FileFormat, SpectralFileFormat):
         # Number of rows and cols for X
         N_rows = Max_row * Max_col * Max_run * N_chn
         N_cols = Max_omega
-        print("Max_row:", Max_row, "Max_col:", Max_col, "Max_omega:", Max_omega,)
         
         # Calculate coordinates for each point if parameters are given
         if "Rotation" in measparams:
@@ -226,46 +225,17 @@ class NeaReader(FileFormat, SpectralFileFormat):
         alpha = 0
         beta = 0
 
-        for _, i in enumerate(
-            range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run)
-        ):
+        for i in range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run):
             if beta == Max_row:
                 beta = 0
                 alpha = alpha + 1
 
             for jrun in range(Max_run):
-                Meta_data[
-                    i
-                    + (Max_row * Max_col * N_chn * jrun) : i
-                    + N_chn
-                    + (Max_row * Max_col * N_chn * jrun),
-                    -1,
-                ] = channelnames
-
+                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, -1] = channelnames
                 if is_ifg:
-                    Meta_data[
-                        i
-                        + (Max_row * Max_col * N_chn * jrun) : i
-                        + N_chn
-                        + (Max_row * Max_col * N_chn * jrun),
-                        -2,
-                    ] = jrun
-
-                Meta_data[
-                    i
-                    + (Max_row * Max_col * N_chn * jrun) : i
-                    + N_chn
-                    + (Max_row * Max_col * N_chn * jrun),
-                    1,
-                ] = ypos[alpha, beta]
-
-                Meta_data[
-                    i
-                    + (Max_row * Max_col * N_chn * jrun) : i
-                    + N_chn
-                    + (Max_row * Max_col * N_chn * jrun),
-                    0,
-                ] = xpos[alpha, beta]
+                    Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, -2] = jrun
+                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, 1] = ypos[alpha, beta]
+                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, 0] = xpos[alpha, beta]
 
             beta = beta + 1
 
