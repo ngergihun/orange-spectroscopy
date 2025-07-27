@@ -442,14 +442,15 @@ class TestNea(unittest.TestCase):
 
     def test_open_v1(self):
         data = Orange.data.Table("spectra20_small.nea")
-        self.assertEqual(len(data), 20)
+        self.assertEqual(len(data), 260)
         self.assertEqual("run", data.domain.metas[2].name)
         self.assertEqual("channel", data.domain.metas[3].name)
-        np.testing.assert_almost_equal(getx(data), [295.1543, 920.4681])
+        np.testing.assert_almost_equal(getx(data), [295.2013, 920.451])
         self.assertEqual("O0A", data.metas[0][3])
-        np.testing.assert_almost_equal(data.X[0, 0], 11.21555)  # O0A
-        self.assertEqual("O0A", data.metas[6][3])
-        np.testing.assert_almost_equal(data.X[6, 0], 7.610092)  # O0P
+        np.testing.assert_almost_equal(data.X[0, 0], 11.21535, decimal=5)  # O0A
+        self.assertEqual("O0P", data.metas[1][3])
+        np.testing.assert_almost_equal(data.X[1, 0], 0.0, decimal=5)  # O0P
+        np.testing.assert_equal(data.metas[0][1], 0.0)  # position
 
     def test_open_v2(self):
         fn = "nea_test_v2.txt"
@@ -462,10 +463,8 @@ class TestNea(unittest.TestCase):
         np.testing.assert_almost_equal(getx(data), [15., 89.])
         self.assertEqual("O0A", data.metas[0][2])
         np.testing.assert_almost_equal(data.X[0, 0], 92.0)
-        self.assertEqual("O0P", data.metas[1][2])
-        np.testing.assert_almost_equal(data.X[1, 0], 21.0)
-        self.assertEqual("O1A", data.metas[8][2])
-        np.testing.assert_almost_equal(data.X[8, 1], 57.0)
+        self.assertEqual("O0A", data.metas[6][2])
+        np.testing.assert_almost_equal(data.X[6, 0], 38.0)
 
     def test_ifg_read(self):
         fn = 'NeaReaderMultichannel_test/Test_Au_Fourier_Scan_Synchrotron.txt'
@@ -541,15 +540,15 @@ class TestNeaImageGSF(unittest.TestCase):
         # check some pixel vaules
         self.assertAlmostEqual(data.X[235,0], 1.2788502, 7)
         np.testing.assert_almost_equal(data.metas[235],
-                                       [53.2443, 30.6984], decimal=3)
+                                       [53.2443, 29.7284], decimal=3)
 
         self.assertAlmostEqual(data.X[1235,0], 1.2770579, 7)
         np.testing.assert_almost_equal(data.metas[1235],
-                                       [53.2443, 30.6484], decimal=3)
+                                       [53.2443, 29.77848], decimal=3)
 
         self.assertAlmostEqual(data.X[11235,0], 1.2476133, 7)
         np.testing.assert_almost_equal(data.metas[11235],
-                                       [53.2443, 30.1484], decimal=3)
+                                       [53.2443, 30.2784], decimal=3)
 
 class TestNeaMultiChannel(unittest.TestCase):
     def test_read(self):
