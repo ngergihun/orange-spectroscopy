@@ -7,11 +7,11 @@ import pandas as pd
 from Orange.data import FileFormat, Table
 from scipy.interpolate import interp1d
 
+from pySNOM import readers
+
 from orangecontrib.spectroscopy.io.gsf import reader_gsf
 from orangecontrib.spectroscopy.io.util import SpectralFileFormat, _spectra_from_image
 from orangecontrib.spectroscopy.utils import MAP_X_VAR, MAP_Y_VAR
-
-from pySNOM import readers
 
 
 class NeaReader(FileFormat, SpectralFileFormat):
@@ -128,10 +128,10 @@ class NeaReader(FileFormat, SpectralFileFormat):
                 Max_omega = len(np.unique(data["Omega"]))
             else:
                 raise ValueError("Variable index not found")
-            
+
         # Run is only there for ifg files
         Max_run = 1
-        meta_cols = 3 # number of meta columns (used later)
+        meta_cols = 3  # number of meta columns (used later)
         is_ifg = False
         N_single_chn = Max_row * Max_col * Max_run
 
@@ -142,14 +142,18 @@ class NeaReader(FileFormat, SpectralFileFormat):
             N_single_chn = Max_row * Max_col * Max_run
             # need to get the maximum of each run's minimum and minimum of each run's maximum
             # to create a common axis without extrapolation (just interpolation)
-            min_newaxis = np.max(np.min(np.reshape(data["M"],(N_single_chn, Max_omega)), axis=1))
-            max_newaxis = np.min(np.max(np.reshape(data["M"],(N_single_chn, Max_omega)), axis=1))
+            min_newaxis = np.max(
+                np.min(np.reshape(data["M"], (N_single_chn, Max_omega)), axis=1)
+            )
+            max_newaxis = np.min(
+                np.max(np.reshape(data["M"], (N_single_chn, Max_omega)), axis=1)
+            )
             new_maxis = np.linspace(min_newaxis, max_newaxis, Max_omega)
 
         # Number of rows and cols for X
         N_rows = N_single_chn * N_chn
         N_cols = Max_omega
-        
+
         # Calculate coordinates for each point if parameters are given
         if "Rotation" in measparams:
             angle = np.radians(measparams["Rotation"])
@@ -205,14 +209,14 @@ class NeaReader(FileFormat, SpectralFileFormat):
                     rawdata = data[channelnames[jch]]
                     startidx = j * Max_run * Max_omega + jrun * Max_omega
                     stopidx = j * Max_run * Max_omega + (jrun + 1) * Max_omega
-                    idx = slice(startidx,stopidx)
+                    idx = slice(startidx, stopidx)
                     rundata = rawdata[idx]
                     # Reinterpolate data if it is interferogram
                     if is_ifg:
                         current_axis = data["M"][idx]
                         f = interp1d(current_axis, rundata)
                         rundata = f(new_maxis)
-                        
+
                     M[jch + N_chn * jrun + Max_run * N_chn * j, :] = rundata
 
         # Preparing metas
@@ -239,10 +243,10 @@ class NeaReader(FileFormat, SpectralFileFormat):
 
         # Prepare metas
         metas = [
-                Orange.data.ContinuousVariable(MAP_X_VAR),
-                Orange.data.ContinuousVariable(MAP_Y_VAR),
-                Orange.data.StringVariable("channel"),
-            ]    
+            Orange.data.ContinuousVariable(MAP_X_VAR),
+            Orange.data.ContinuousVariable(MAP_Y_VAR),
+            Orange.data.StringVariable("channel"),
+        ]
         # Neaspec tends to name the independent variable differently all the time
         # Try to prepare for all the names we know so far
         if is_ifg:
@@ -251,7 +255,7 @@ class NeaReader(FileFormat, SpectralFileFormat):
         else:
             possible_names = ["Wavenumber", "Wavelength"]
             varname = [name for name in possible_names if name in data][0]
-            waveN = data[varname][0 : Max_omega]
+            waveN = data[varname][0:Max_omega]
 
         domain = Orange.data.Domain([], None, metas=metas)
         meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
