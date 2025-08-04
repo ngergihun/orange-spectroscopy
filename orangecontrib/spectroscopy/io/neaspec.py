@@ -133,19 +133,21 @@ class NeaReader(FileFormat, SpectralFileFormat):
         Max_run = 1
         meta_cols = 3 # number of meta columns (used later)
         is_ifg = False
+        N_single_chn = Max_row * Max_col * Max_run
 
         if "Run" in data:
             is_ifg = True
             Max_run = len(np.unique(data["Run"]))
             meta_cols = 4
+            N_single_chn = Max_row * Max_col * Max_run
             # need to get the maximum of each run's minimum and minimum of each run's maximum
             # to create a common axis without extrapolation (just interpolation)
-            min_newaxis = np.max(np.min(np.reshape(data["M"],(Max_row * Max_col * Max_run, Max_omega)), axis=1))
-            max_newaxis = np.min(np.max(np.reshape(data["M"],(Max_row * Max_col * Max_run, Max_omega)), axis=1))
+            min_newaxis = np.max(np.min(np.reshape(data["M"],(N_single_chn, Max_omega)), axis=1))
+            max_newaxis = np.min(np.max(np.reshape(data["M"],(N_single_chn, Max_omega)), axis=1))
             new_maxis = np.linspace(min_newaxis, max_newaxis, Max_omega)
 
         # Number of rows and cols for X
-        N_rows = Max_row * Max_col * Max_run * N_chn
+        N_rows = N_single_chn * N_chn
         N_cols = Max_omega
         
         # Calculate coordinates for each point if parameters are given
@@ -201,22 +203,17 @@ class NeaReader(FileFormat, SpectralFileFormat):
             for jrun in range(Max_run):
                 for jch in range(N_chn):
                     rawdata = data[channelnames[jch]]
-                    rundata = rawdata[
-                        j * Max_run * Max_omega
-                        + jrun * Max_omega : j * Max_run * Max_omega
-                        + (jrun + 1) * Max_omega
-                    ]
+                    startidx = j * Max_run * Max_omega + jrun * Max_omega
+                    stopidx = j * Max_run * Max_omega + (jrun + 1) * Max_omega
+                    idx = slice(startidx,stopidx)
+                    rundata = rawdata[idx]
                     # Reinterpolate data if it is interferogram
                     if is_ifg:
-                        current_axis = data["M"][
-                            j * Max_run * Max_omega
-                            + jrun * Max_omega : j * Max_run * Max_omega
-                            + (jrun + 1) * Max_omega
-                        ]
+                        current_axis = data["M"][idx]
                         f = interp1d(current_axis, rundata)
                         rundata = f(new_maxis)
                         
-                    M[jch + N_chn * jrun + (Max_run * N_chn * j), :] = rundata
+                    M[jch + N_chn * jrun + Max_run * N_chn * j, :] = rundata
 
         # Preparing metas
         Meta_data = np.zeros((N_rows, meta_cols), dtype="object")
@@ -225,17 +222,18 @@ class NeaReader(FileFormat, SpectralFileFormat):
         alpha = 0
         beta = 0
 
-        for i in range(0, Max_row * Max_col * N_chn * Max_run, N_chn * Max_run):
+        for i in range(0, N_rows, N_chn * Max_run):
             if beta == Max_row:
                 beta = 0
                 alpha = alpha + 1
 
             for jrun in range(Max_run):
-                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, -1] = channelnames
+                idx = slice(i + N_chn * jrun, i + (jrun + 1) * N_chn)
                 if is_ifg:
-                    Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, -2] = jrun
-                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, 1] = ypos[alpha, beta]
-                Meta_data[i + N_chn * jrun : i + (jrun + 1) * N_chn, 0] = xpos[alpha, beta]
+                    Meta_data[idx, -2] = jrun
+                Meta_data[idx, -1] = channelnames
+                Meta_data[idx, 1] = ypos[alpha, beta]
+                Meta_data[idx, 0] = xpos[alpha, beta]
 
             beta = beta + 1
 
