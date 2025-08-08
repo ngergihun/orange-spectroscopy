@@ -145,7 +145,8 @@ if __name__ == '__main__':
             'lmfit>=1.3.3',
             'bottleneck',
             'pebble',
-            'agilent-format>=0.4.5'
+            'agilent-format>=0.4.5',
+            'scikit-image'
         ],
         extras_require={
             'test': ['coverage'],
