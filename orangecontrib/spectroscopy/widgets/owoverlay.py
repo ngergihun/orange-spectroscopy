@@ -213,7 +213,6 @@ class OWOverlay(OWWidget, ConcurrentWidgetMixin):
 
     @staticmethod
     def with_overlay(imageplot, data, maindata, state):
-
         if maindata is None:
             return None
         elif data is None:
