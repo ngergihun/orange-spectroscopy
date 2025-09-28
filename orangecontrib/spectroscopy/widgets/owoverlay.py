@@ -214,8 +214,11 @@ class OWOverlay(OWWidget, ConcurrentWidgetMixin):
     @staticmethod
     def with_overlay(imageplot, data, maindata, state):
 
-        if data is None or maindata is None:
+        if maindata is None:
             return None
+        
+        if data is None:
+            return maindata.copy()
 
         def progress_interrupt():
             if state.is_interruption_requested():
