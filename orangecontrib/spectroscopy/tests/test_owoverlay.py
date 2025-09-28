@@ -117,6 +117,13 @@ class TestOWOverlay(WidgetTest):
         self.assertEqual(original_names, names(data))
         self.assertEqual(original_names + ["Overlay Image (1)"], names(out))
 
+    def test_pass_data_with_no_overlayinput(self):
+        data = self.whitelight
+        self.send_signal("Data", data)
+
+        out = self.get_output("Decorated Data")
+        self.assertIsNotNone(out)
+
 
 if __name__ == "__main__":
     unittest.main()
