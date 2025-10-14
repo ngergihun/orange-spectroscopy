@@ -479,6 +479,18 @@ class TestNea(unittest.TestCase):
         self.assertEqual("O0A", data.metas[2][3])
         self.assertEqual("O0P", data.metas[3][3])
 
+    def test_ifg_read_info(self):
+        fn = 'NeaReaderMultichannel_test/Test_Au_Fourier_Scan_Synchrotron.txt'
+        absolute_filename = FileFormat.locate(fn, dataset_dirs)
+        data = NeaReader(absolute_filename).read()
+        self.assertEqual(len(data), 30)
+        self.assertEqual("channel", data.domain.metas[3].name)
+        self.assertEqual("O0A", data.metas[2][3]) # New reader has more channels
+        self.assertEqual("O0P", data.metas[3][3])
+        self.assertEqual(data.attributes['Channel Data Type'][0], 'Polar')
+        self.assertEqual(data.attributes['Calculated Datapoint Spacing (Δx)'][0], '[cm]')
+        self.assertEqual(data.attributes['Scan'], 'Fourier Scan')
+        check_attributes(data)
 
 class TestNeaGSF(unittest.TestCase):
 

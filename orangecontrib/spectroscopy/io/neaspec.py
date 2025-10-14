@@ -260,6 +260,24 @@ class NeaReader(FileFormat, SpectralFileFormat):
         domain = Orange.data.Domain([], None, metas=metas)
         meta_data = Table.from_numpy(domain, X=np.zeros((len(M), 0)), metas=Meta_data)
         # Add measurement parameters to attributes
+
+        if is_ifg:
+            # Taken from old NeaReaderMultiChannel
+            # calculate datapoint spacing in cm for the fft widget as the optical path
+            dx = 2 * np.mean(np.diff(new_maxis)) * 1e2  # convert [m] to [cm]
+            # check file headers for wavenumber scaling factor
+            # and apply it to the calculated spacing
+            try:
+                wavenumber_scaling = measparams["WavenumberScaling"]
+                wavenumber_scaling = float(wavenumber_scaling)
+                dx = dx / wavenumber_scaling
+            except KeyError:
+                pass
+            # register the calculated spacing in the metadata
+            measparams["Calculated Datapoint Spacing (Δx)"] = ["[cm]", dx]
+            measparams["Domain Units"] = "[µm]"
+            measparams["Channel Data Type"] = "Polar", "i.e. Amplitude and Phase separated"
+
         meta_data.attributes = measparams
 
         return waveN, M, meta_data
