@@ -90,6 +90,11 @@ class TestDat(unittest.TestCase):
             d = Orange.data.Table(fn)
             np.testing.assert_equal(d.X, [[500., 650.]])
 
+    def test_unlabeled_comment_row(self):
+        with named_file("Wavenumber,Intensity\n650.4205,39.928503\n651.3523,40.086846", suffix=".dpt") as fn:
+            d = Orange.data.Table(fn)
+            np.testing.assert_equal(d.X, [[39.928503, 40.086846]])
+
 
 try:
     no_visible_image = FileFormat.locate("opus/no_visible_images.0",
