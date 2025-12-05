@@ -36,6 +36,7 @@ from Orange.widgets.utils.itemmodels import DomainModel, PyListModel
 from Orange.widgets.utils import saveplot
 from Orange.widgets.utils.concurrent import TaskState, ConcurrentMixin
 from Orange.widgets.visualize.utils.plotutils import GraphicsView, PlotItem, AxisItem
+from Orange.widgets.visualize.owscatterplotgraph import ScatterPlotItem
 
 from orangewidget.utils.visual_settings_dlg import VisualSettingsDialog
 
@@ -1579,8 +1580,32 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             raise ex
 
 
+def _make_pen(color, width):
+    p = QPen(color, width)
+    p.setCosmetic(True)
+    return p
+
+
+class ScatterPlotMixin:
+
+    def __init__(self):
+        self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
+        self.plot.addItem(self.scatterplot_item)
+
+        # a test hardcoded scatterplot
+        # Defaults from the Scatter Plot widget:
+        # - size : 13.5
+        # - border is color.darker(120) with width of 1.5
+        self.scatterplot_item.setData(x=[1,3,2],
+                                      y=[1,2,3],
+                                      data=[1,2,3],
+                                      pen=_make_pen(QColor("red").darker(120), 1.5),
+                                      brush=QBrush(QColor("red")))
+
+
 class ImagePlot(BasicImagePlot,
-                VectorSettingMixin, VectorMixin):
+                VectorSettingMixin, VectorMixin,
+                ScatterPlotMixin):
 
     attr_x = ContextSetting(None, exclude_attributes=True)
     attr_y = ContextSetting(None, exclude_attributes=True)
@@ -1589,6 +1614,7 @@ class ImagePlot(BasicImagePlot,
         BasicImagePlot.__init__(self, parent)
         VectorSettingMixin.__init__(self)
         VectorMixin.__init__(self)
+        ScatterPlotMixin.__init__(self)
 
         self.image_updated.connect(self.update_binsize)
         self.image_updated.connect(self.update_vectors)
