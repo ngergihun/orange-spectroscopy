@@ -1592,13 +1592,24 @@ class ScatterPlotMixin:
         self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
         self.plot.addItem(self.scatterplot_item)
 
+        self.image_updated.connect(self.draw_scatterplot)
+
+    def draw_scatterplot(self):
+        self.scatterplot_item.clear()
+
+        if self.data_points is None:
+            return
+
+        xy = self.data_points.T[:, self.data_valid_positions]
+        vals = self.data_values[self.data_valid_positions][:, 0]  # this ignores RGB
+        indexes = np.arange(len(self.data_points))[self.data_valid_positions]
+
         # a test hardcoded scatterplot
         # Defaults from the Scatter Plot widget:
         # - size : 13.5
         # - border is color.darker(120) with width of 1.5
-        self.scatterplot_item.setData(x=[1,3,2],
-                                      y=[1,2,3],
-                                      data=[1,2,3],
+        self.scatterplot_item.setData(x=xy[0], y=xy[1],
+                                      data=indexes,
                                       pen=_make_pen(QColor("red").darker(120), 1.5),
                                       brush=QBrush(QColor("red")))
 
@@ -1623,6 +1634,8 @@ class ImagePlot(BasicImagePlot,
         super().update_view()
         self.update_binsize()
         self.update_vectors()  # clears the vector plot
+
+
 
 
 class CurvePlotHyper(CurvePlot):
