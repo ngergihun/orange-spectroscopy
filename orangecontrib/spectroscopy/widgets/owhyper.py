@@ -1336,6 +1336,8 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.data = None
         self.data_ids = {}
 
+        self.image_updated.connect(self.refresh_img_selection)
+
     def init_interface_data(self, data):
         self.init_attr_values(data)
 
@@ -1439,10 +1441,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.data_valid_positions = None
         self.xindex = None
         self.yindex = None
-
-        if isinstance(self, VectorMixin):
-            self.update_binsize()
-            self.update_vectors()  # clears the vector plot
 
         self.start(self.compute_image, self.data, self.attr_x, self.attr_y,
                     self.parent.image_values(),
@@ -1550,10 +1548,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             self.yindex = yindex
             self.xindex = xindex
 
-            if isinstance(self, VectorMixin):
-                self.update_binsize()
-                self.update_vectors()
-
             # shift centres of the pixels so that the axes are useful
             shiftx = _shift(lsx)
             shifty = _shift(lsy)
@@ -1564,7 +1558,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             self.img.setRect(QRectF(left, bottom, width, height))
 
         if finished:
-            self.refresh_img_selection()
             self.image_updated.emit()
 
     def on_done(self, res):
@@ -1596,6 +1589,14 @@ class ImagePlot(BasicImagePlot,
         BasicImagePlot.__init__(self, parent)
         VectorSettingMixin.__init__(self)
         VectorMixin.__init__(self)
+
+        self.image_updated.connect(self.update_binsize)
+        self.image_updated.connect(self.update_vectors)
+
+    def update_view(self):
+        super().update_view()
+        self.update_binsize()
+        self.update_vectors()  # clears the vector plot
 
 
 class CurvePlotHyper(CurvePlot):
