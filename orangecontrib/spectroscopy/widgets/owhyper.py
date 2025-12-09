@@ -1598,14 +1598,30 @@ def _make_pen(color, width):
 
 class ScatterPlotMixin:
 
+    draw_as_points = Setting(False, schema_only=True)
+
     def __init__(self):
         self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
         self.plot.addItem(self.scatterplot_item)
 
+        # add to a box defined in the parent class
+        gui.checkBox(self.axes_settings_box, self, "draw_as_points",
+                     "As points", callback=self._draw_as_points)
+
+        self.img.setVisible(not self.draw_as_points)
+
         self.image_updated.connect(self.draw_scatterplot)
+
+    def _draw_as_points(self):
+        self.img.setVisible(not self.draw_as_points)
+        self.draw_scatterplot()
 
     def draw_scatterplot(self):
         self.scatterplot_item.clear()
+
+        if not self.draw_as_points:
+            self.scatterplot_item.setData()
+            return
 
         if self.data_points is None:
             return
@@ -1800,7 +1816,7 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
         super().__init__()
         SelectionOutputsMixin.__init__(self)
 
-        iabox = gui.widgetBox(self.controlArea, "Image axes")
+        iabox = gui.widgetBox(self.controlArea, "Display")
 
         dbox = gui.widgetBox(self.controlArea, "Image values")
 
