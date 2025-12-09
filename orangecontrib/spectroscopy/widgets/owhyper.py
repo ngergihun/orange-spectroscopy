@@ -55,7 +55,11 @@ from orangecontrib.spectroscopy.widgets.line_geometry import in_polygon, interse
 from orangecontrib.spectroscopy.widgets.utils import \
     SelectionGroupMixin, SelectionOutputsMixin
 
+
 IMAGE_TOO_BIG = 1024*1024*100
+
+
+NAN_COLOR = (100, 100, 100, 255)
 
 
 class InterruptException(Exception):
@@ -190,7 +194,7 @@ class ImageItemNan(pg.ImageItem):
 
         argb, alpha = pg.makeARGB(image, lut=lut, levels=levels)  # format is bgra
 
-        argb[image_nans] = (100, 100, 100, 255)  # replace unknown values with a color
+        argb[image_nans] = NAN_COLOR  # replace unknown values with a color
 
         w = 1
         if np.any(self.selection):
@@ -812,7 +816,7 @@ class ImageColorSettingMixin:
         self.img.setLevels(levels)
         self.legend.set_range(levels[0], levels[1])
 
-    def update_color_schema(self):
+    def compute_lut(self):
         if not self.data:
             return
 
@@ -820,15 +824,20 @@ class ImageColorSettingMixin:
             dat = self.parent.data.domain[self.parent.attr_value]
             if isinstance(dat, DiscreteVariable):
                 # use a defined discrete palette
-                self.img.setLookupTable(dat.colors)
-                return
+                return dat.colors
 
         # use a continuous palette
         data = self.color_cb.itemData(self.palette_index, role=Qt.UserRole)
         _, colors = max(data.items())
         cols = color_palette_table(colors)
-        self.img.setLookupTable(cols)
-        self.legend.set_colors(cols)
+        return cols
+
+    def update_color_schema(self):
+        lut = self.compute_lut()
+        if lut is None:
+            return
+        self.img.setLookupTable(lut)
+        self.legend.set_colors(lut)
 
     def reset_thresholds(self):
         self.threshold_low = 0.
