@@ -1611,17 +1611,38 @@ class ScatterPlotMixin:
             return
 
         xy = self.data_points.T[:, self.data_valid_positions]
-        vals = self.data_values[self.data_valid_positions][:, 0]  # this ignores RGB
+        vals = self.data_values[self.data_valid_positions]
         indexes = np.arange(len(self.data_points))[self.data_valid_positions]
 
-        # a test hardcoded scatterplot
+        levels = self.compute_palette_min_max_points()
+        if levels is None:
+            return  # RGB
+
+        lut = self.compute_lut()
+        bins = len(lut)
+
+        minv, maxv = levels
+        vals = vals[:, 0]
+        binned_to_lut = np.round(((vals - minv)/(maxv - minv))*(bins-1))
+        nans = ~np.isfinite(binned_to_lut)
+        binned_to_lut[nans] = 0
+        binned_to_lut = np.clip(binned_to_lut, 0, bins-1)
+        binned_to_lut = binned_to_lut.astype("int")
+        colors = lut[binned_to_lut]
+        colors[nans] = [np.array(NAN_COLOR)[:3]]  # replace unknown values with a color
+
+        # TODO this is inefficient - too many Qt object that could be recycled
+        colors = [QColor(int(c[0]), int(c[1]), int(c[2])) for c in colors]
+        brushes = [QBrush(c) for c in colors]
+        pens = [_make_pen(c.darker(120), 1.5) for c in colors]
+
         # Defaults from the Scatter Plot widget:
         # - size : 13.5
         # - border is color.darker(120) with width of 1.5
         self.scatterplot_item.setData(x=xy[0], y=xy[1],
                                       data=indexes,
-                                      pen=_make_pen(QColor("red").darker(120), 1.5),
-                                      brush=QBrush(QColor("red")))
+                                      pen=pens,
+                                      brush=brushes)
 
 
 class ImagePlot(BasicImagePlot,
