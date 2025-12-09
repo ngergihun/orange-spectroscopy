@@ -1663,10 +1663,24 @@ class ImagePlot(BasicImagePlot,
 
     def update_view(self):
         super().update_view()
+        self.draw_scatterplot()
         self.update_binsize()
         self.update_vectors()  # clears the vector plot
 
+    # TODO The following make ScatterPlot redraw three times when a new
+    # image is computed
 
+    def update_levels(self):
+        super().update_levels()
+        self.draw_scatterplot()
+
+    def update_rgb_levels(self):
+        super().update_rgb_levels()
+        self.draw_scatterplot()
+
+    def update_color_schema(self):
+        super().update_color_schema()
+        self.draw_scatterplot()
 
 
 class CurvePlotHyper(CurvePlot):
