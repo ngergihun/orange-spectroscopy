@@ -132,11 +132,9 @@ def _shift(ls):
     return (ls[1]-ls[0])/(2*(ls[2]-1))
 
 
-def get_levels(img):
+def get_levels(array):
     """ Compute levels. Account for NaN values. """
-    while img.size > 2 ** 16:
-        img = img[::2, ::2]
-    mn, mx = bottleneck.nanmin(img), bottleneck.nanmax(img)
+    mn, mx = bottleneck.nanmin(array), bottleneck.nanmax(array)
     if mn == mx or math.isnan(mx) or math.isnan(mn):
         mn = 0
         mx = 255
@@ -759,18 +757,16 @@ class ImageColorSettingMixin:
         else:
             self.legend.setVisible(self.show_legend)
 
-    def update_levels(self):
+    def compute_palette_min_max_points(self):
         if not self.data:
             return
 
         if self.fixed_levels is not None:
-            levels = list(self.fixed_levels)
-        elif self.img.image is not None and self.img.image.ndim == 2:
-            levels = get_levels(self.img.image)
-        elif self.img.image is not None and self.img.image.shape[2] == 1:
-            levels = get_levels(self.img.image[:, :, 0])
-        elif self.img.image is not None and self.img.image.shape[2] == 3:
-            return
+            levels = list(self.fixed_levels)  # this is also
+        elif self.data_values is not None and self.data_values.shape[1] == 3:
+            return  # RGB
+        elif self.data_values is not None:
+            levels = get_levels(self.data_values)
         else:
             levels = [0, 255]
 
@@ -792,8 +788,7 @@ class ImageColorSettingMixin:
         self._threshold_high_slider.setEnabled(enabled_level_settings)
 
         if self.fixed_levels is not None:
-            self.img.setLevels(self.fixed_levels)
-            return
+            return self.fixed_levels
 
         if not self.threshold_low < self.threshold_high:
             # TODO this belongs here, not in the parent
@@ -808,8 +803,14 @@ class ImageColorSettingMixin:
         ll_threshold = ll + (lh - ll) * self.threshold_low
         lh_threshold = ll + (lh - ll) * self.threshold_high
 
-        self.img.setLevels([ll_threshold, lh_threshold])
-        self.legend.set_range(ll_threshold, lh_threshold)
+        return [ll_threshold, lh_threshold]
+
+    def update_levels(self):
+        levels = self.compute_palette_min_max_points()
+        if levels is None:
+            return  # RGB
+        self.img.setLevels(levels)
+        self.legend.set_range(levels[0], levels[1])
 
     def update_color_schema(self):
         if not self.data:
@@ -882,8 +883,8 @@ class ImageRGBSettingMixin:
         if not self.data:
             return
 
-        if self.img.image is not None and self.img.image.shape[2] == 3:
-            levels = [get_levels(self.img.image[:, :, i]) for i in range(self.img.image.shape[2])]
+        if self.data_values is not None and self.data_values.shape[1] == 3:
+            levels = [get_levels(self.data_values[:, i]) for i in range(self.img.image.shape[2])]
         else:
             return
 
@@ -1522,6 +1523,7 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         if finished:
             self.lsx, self.lsy = lsx, lsy
             self.data_points = res.data_points
+            self.data_values = d
 
         xindex, xnan = index_values_nan(res.coorx, lsx)
         yindex, ynan = index_values_nan(res.coory, lsy)
@@ -1537,7 +1539,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             imdata = np.ones((lsy[2], lsx[2], d.shape[1])) * float("nan")
             imdata[yindex[valid], xindex[valid]] = d[valid]
 
-            self.data_values = d
             self.data_imagepixels = np.vstack((yindex, xindex)).T
             self.img.setImage(imdata, autoLevels=False)
             self.update_levels()
