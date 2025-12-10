@@ -1427,7 +1427,7 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.selection_changed.emit()
 
     def _points_at_pos(self, pos):
-        if self.data and self.lsx and self.lsy:
+        if self.data and self.lsx and self.lsy and self.img.isVisible():
             x, y = pos.x(), pos.y()
             distance = np.abs(self.data_points - [[x, y]])
             sel = (distance[:, 0] < _shift(self.lsx)) * (distance[:, 1] < _shift(self.lsy))
@@ -1604,6 +1604,9 @@ class ScatterPlotMixin:
         self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
         self.plot.addItem(self.scatterplot_item)
 
+        self.scatterplot_item.sigClicked.connect(self.select_by_click_scatterplot)
+        self.selection_changed.connect(self.draw_scatterplot)
+
         # add to a box defined in the parent class
         gui.checkBox(self.axes_settings_box, self, "draw_as_points",
                      "As points", callback=self._draw_as_points)
@@ -1628,7 +1631,7 @@ class ScatterPlotMixin:
 
         xy = self.data_points.T[:, self.data_valid_positions]
         vals = self.data_values[self.data_valid_positions]
-        indexes = np.arange(len(self.data_points))[self.data_valid_positions]
+        indexes = np.arange(len(self.data_points), dtype=int)[self.data_valid_positions]
 
         levels = self.compute_palette_min_max_points()
         if levels is None:
@@ -1659,6 +1662,12 @@ class ScatterPlotMixin:
                                       data=indexes,
                                       pen=pens,
                                       brush=brushes)
+
+    def select_by_click_scatterplot(self, _, points):
+        selected_indices = np.array([p.data() for p in points], dtype=int)
+        sel = np.full(len(self.data_points), False)
+        sel[selected_indices] = True
+        self.make_selection(sel)
 
 
 class ImagePlot(BasicImagePlot,
