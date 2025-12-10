@@ -195,20 +195,28 @@ class ImageItemNan(pg.ImageItem):
         argb, alpha = pg.makeARGB(image, lut=lut, levels=levels)  # format is bgra
 
         argb[image_nans] = NAN_COLOR  # replace unknown values with a color
+        argb = color_with_selections(argb, self.selection, weight=1, reverse_color=True)
+        self.qimage = pg.makeQImage(argb, argb.shape[-1] == 4, transpose=False)
 
-        w = 1
-        if np.any(self.selection):
-            max_sel = np.max(self.selection)
-            colors = DiscreteVariable(name="colors", values=map(str, range(max_sel))).colors
-            fargb = argb.astype(np.float32)
-            for i, color in enumerate(colors):
-                color = np.hstack((color[::-1], [255]))  # qt color
-                sel = self.selection == i+1
+
+def color_with_selections(argb, selection, weight=None, reverse_color=False):
+    if np.any(selection):
+        argb = argb.copy()
+        max_sel = np.max(selection)
+        colors = DiscreteVariable(name="colors", values=map(str, range(max_sel))).colors
+        fargb = argb.astype(float)
+        for i, color in enumerate(colors):
+            color = color[::-1] if reverse_color else color
+            color = np.hstack((color, [255]))  # qt color
+            sel = selection == i + 1
+            if weight is not None:
                 # average the current color with the selection color
-                argb[sel] = (fargb[sel] + w*color) / (1+w)
-            alpha = True
-            argb[:, :, 3] = np.maximum((self.selection > 0)*255, 100)
-        self.qimage = pg.makeQImage(argb, alpha, transpose=False)
+                argb[sel] = (fargb[sel] + weight * color) / (1 + weight)
+            else:
+                argb[sel] = color
+            argb[..., 3] = np.maximum((selection > 0) * 255, 100)
+        argb = argb.astype(np.uint8)
+    return argb
 
 
 def color_palette_table(colors, underflow=None, overflow=None):
@@ -1630,6 +1638,8 @@ class ScatterPlotMixin:
             return  # RGB
 
         lut = self.compute_lut()
+        if lut.shape[-1] == 3:  # add alpha channel
+            lut = np.c_[lut, np.full((len(lut), 1), 255)]
         bins = len(lut)
 
         minv, maxv = levels
@@ -1640,12 +1650,21 @@ class ScatterPlotMixin:
         binned_to_lut = np.clip(binned_to_lut, 0, bins-1)
         binned_to_lut = binned_to_lut.astype("int")
         colors = lut[binned_to_lut]
-        colors[nans] = [np.array(NAN_COLOR)[:3]]  # replace unknown values with a color
+        colors[nans] = [np.array(NAN_COLOR)]  # replace unknown values with a color
+
+        selection_colors = color_with_selections(colors, self.selection_group, None)
+        have_selection = not selection_colors is colors
 
         # TODO this is inefficient - too many Qt object that could be recycled
-        colors = [QColor(int(c[0]), int(c[1]), int(c[2])) for c in colors]
+        colors = [QColor(*[int(a) for a in c]) for c in colors]
+
         brushes = [QBrush(c) for c in colors]
-        pens = [_make_pen(c.darker(120), 1.5) for c in colors]
+
+        if not have_selection:
+            pens = [_make_pen(c.darker(120), 1.5) for c in colors]
+        else:
+            selection_colors = [QColor(*[int(a) for a in c]) for c in selection_colors]
+            pens = [_make_pen(c, 3.5) for c in selection_colors]
 
         # Defaults from the Scatter Plot widget:
         # - size : 13.5
