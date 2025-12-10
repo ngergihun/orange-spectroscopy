@@ -235,7 +235,7 @@ class TestOWHyper(WidgetTest):
         self.assertIsNone(out, None)
 
         # select specific points
-        self.widget.imageplot.select_square(QPointF(53.20, 30.0), QPointF(53.21, 30.03))
+        self.widget.imageplot.select_square(QPointF(53.20, 30.0), QPointF(53.205, 30.02))
         out = self.get_output("Selection")
         np.testing.assert_almost_equal(out.metas,
                                        [[53.2043, 30.0185], [53.2043, 30.0085]],

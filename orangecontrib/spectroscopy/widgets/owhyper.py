@@ -991,18 +991,10 @@ class ImageSelectionMixin:
 
     def select_polygon(self, polygon):
         """ Select by a polygon which has to contain whole pixels. """
-        if self.data and self.lsx and self.lsy:
+        if self.data and self.data_points is not None:
             polygon = [(p.x(), p.y()) for p in polygon]
-            # a polygon should contain all pixel
-            shiftx = _shift(self.lsx)
-            shifty = _shift(self.lsy)
-            points_edges = [self.data_points + [[shiftx, shifty]],
-                            self.data_points + [[-shiftx, shifty]],
-                            self.data_points + [[shiftx, -shifty]],
-                            self.data_points + [[-shiftx, -shifty]]]
-            inp = in_polygon(points_edges[0], polygon)
-            for p in points_edges[1:]:
-                inp *= in_polygon(p, polygon)
+            # a polygon should contain data point center
+            inp = in_polygon(self.data_points, polygon)
             self.make_selection(inp)
 
     def select_line(self, p1, p2):
