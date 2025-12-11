@@ -1,4 +1,5 @@
 import collections.abc
+from functools import cache
 import math
 import warnings
 from collections import OrderedDict
@@ -1655,16 +1656,28 @@ class ScatterPlotMixin:
         selection_colors = color_with_selections(colors, self.selection_group, None)
         have_selection = not selection_colors is colors
 
-        # TODO this is inefficient - too many Qt object that could be recycled
-        colors = [QColor(*[int(a) for a in c]) for c in colors]
+        @cache
+        def mk_color(*args):
+            args = [int(a) for a in args]
+            return QColor(*args)
 
-        brushes = [QBrush(c) for c in colors]
+        @cache
+        def mk_brush(*args):
+            return QBrush(mk_color(*args))
 
+        @cache
+        def mk_pen_normal(*args):
+            return _make_pen(mk_color(*args).darker(120), 1.5)
+
+        @cache
+        def mk_pen_selection(*args):
+            return _make_pen(mk_color(*args), 3.5)
+
+        brushes = [mk_brush(*c) for c in colors]
         if not have_selection:
-            pens = [_make_pen(c.darker(120), 1.5) for c in colors]
+            pens = [mk_pen_normal(*c) for c in colors]
         else:
-            selection_colors = [QColor(*[int(a) for a in c]) for c in selection_colors]
-            pens = [_make_pen(c, 3.5) for c in selection_colors]
+            pens = [mk_pen_selection(*c) for c in selection_colors]
 
         # Defaults from the Scatter Plot widget:
         # - size : 13.5
