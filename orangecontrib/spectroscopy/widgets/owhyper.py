@@ -897,7 +897,7 @@ class ImageRGBSettingMixin:
         box.layout().addLayout(form)
         return box
 
-    def update_rgb_levels(self):
+    def compute_rgb_levels(self):
         if not self.data:
             return
 
@@ -930,7 +930,12 @@ class ImageRGBSettingMixin:
         bll = float(self.blue_level_low) if self.blue_level_low is not None else levels[2][0]
         blh = float(self.blue_level_high) if self.blue_level_high is not None else levels[2][1]
 
-        new_levels = [[rll, rlh], [gll, glh], [bll, blh]]
+        return [[rll, rlh], [gll, glh], [bll, blh]]
+
+    def update_rgb_levels(self):
+        new_levels = self.compute_rgb_levels()
+        if new_levels is None:
+            return  # not RGB
         self.img.setLevels(new_levels)
 
 
@@ -1635,22 +1640,33 @@ class ScatterPlotMixin:
         indexes = np.arange(len(self.data_points), dtype=int)[self.data_valid_positions]
 
         levels = self.compute_palette_min_max_points()
-        if levels is None:
-            return  # RGB
 
-        lut = self.compute_lut()
-        if lut.shape[-1] == 3:  # add alpha channel
-            lut = np.c_[lut, np.full((len(lut), 1), 255)]
-        bins = len(lut)
+        is_rgb = levels is None
 
-        minv, maxv = levels
-        vals = vals[:, 0]
-        binned_to_lut = np.round(((vals - minv)/(maxv - minv))*(bins-1))
-        nans = ~np.isfinite(binned_to_lut)
-        binned_to_lut[nans] = 0
-        binned_to_lut = np.clip(binned_to_lut, 0, bins-1)
-        binned_to_lut = binned_to_lut.astype("int")
-        colors = lut[binned_to_lut]
+        if not is_rgb:
+            lut = self.compute_lut()
+            bins = len(lut)
+            minv, maxv = levels
+        else:
+            rgb_levels = np.array(self.compute_rgb_levels())
+            minv = rgb_levels[:, 0]
+            maxv = rgb_levels[:, 1]
+            bins = 256
+
+        intensity = np.round(((vals - minv)/(maxv - minv))*(bins-1))
+        nans = ~np.isfinite(intensity)
+        nans = np.any(nans, axis=1)
+        intensity[nans] = 0  # to prevent artifact later on
+        binned = np.clip(intensity, 0, bins-1).astype(int)
+
+        if not is_rgb:
+            colors = lut[binned[:, 0]]
+        else:
+            colors = binned
+
+        if colors.shape[-1] == 3:  # add alpha channel
+            colors = np.c_[colors, np.full((len(colors), 1), 255)]
+
         colors[nans] = [np.array(NAN_COLOR)]  # replace unknown values with a color
 
         selection_colors = color_with_selections(colors, self.selection_group, None)
