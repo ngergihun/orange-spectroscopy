@@ -2,6 +2,7 @@ from collections.abc import Iterable
 
 import bottleneck
 import numpy as np
+import scipy.integrate
 
 import Orange
 from Orange.data.util import SharedComputeValue, get_unique_names
@@ -99,10 +100,10 @@ class IntegrateFeatureEdgeBaseline(IntegrateFeature):
 
     def compute_integral(self, x, y_s):
         if np.any(np.isnan(y_s)):
-            # interpolate unknowns as trapz can not handle them
+            # interpolate unknowns as integration can not handle them
             y_s, _ = nan_extend_edges_and_interpolate(x, y_s)
         y_s = y_s - self.compute_baseline(x, y_s)
-        return np.trapz(y_s, x, axis=1)
+        return scipy.integrate.trapezoid(y_s, x, axis=1)
 
     def compute_draw_info(self, x, ys):
         return [("curve", (x, self.compute_baseline(x, ys), INTEGRATE_DRAW_BASELINE_PENARGS)),
@@ -141,10 +142,10 @@ class IntegrateFeatureSeparateBaseline(IntegrateFeature):
         x_s, y_s = self.limit_region(x_s, y_s)
 
         if np.any(np.isnan(y_s)):
-            # interpolate unknowns as trapz can not handle them
+            # interpolate unknowns as integration can not handle them
             y_s, _ = nan_extend_edges_and_interpolate(x_s, y_s)
 
-        return np.trapz(y_s, x_s, axis=1)
+        return scipy.integrate.trapezoid(y_s, x_s, axis=1)
 
     def compute_draw_info(self, x_s, y_s):
         xl, ysl = self.limit_region(x_s, y_s)

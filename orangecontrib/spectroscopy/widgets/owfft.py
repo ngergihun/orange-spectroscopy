@@ -297,7 +297,7 @@ class OWFFT(OWWidget):
         self.Warning.clear()
         self.Error.clear()
 
-        if dataset is not None:
+        if dataset and dataset.X.size:
             self.data = dataset
             self.determine_sweeps()
             self.info_type.setText('%d %s interferogram(s)' %
