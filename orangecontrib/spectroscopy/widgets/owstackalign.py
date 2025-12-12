@@ -235,7 +235,11 @@ class OWStackAlign(OWWidget):
 
         self.plotview.plotItem.clear()
 
-        if self.data and len(self.data.domain.attributes) and self.attr_x and self.attr_y:
+        if not (self.data and len(self.data.domain.attributes) and self.attr_x and self.attr_y):
+            pass
+        elif self.attr_x == self.attr_y:
+            self.Error.invalid_axis("same values")
+        else:
             try:
                 shifts, new_stack = process_stack(self.data, self.attr_x, self.attr_y,
                                                   upsample_factor=100, use_sobel=self.sobel_filter,
