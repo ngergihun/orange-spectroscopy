@@ -2,8 +2,7 @@ import numpy as np
 import pyqtgraph as pg
 import bottleneck as bn
 
-from scipy.ndimage import sobel
-from scipy.ndimage.interpolation import shift
+from scipy.ndimage import sobel, shift
 
 from AnyQt.QtCore import Qt
 from AnyQt.QtWidgets import QLabel
