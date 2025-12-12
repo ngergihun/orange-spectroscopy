@@ -1604,7 +1604,7 @@ def _make_pen(color, width):
 
 class ScatterPlotMixin:
 
-    draw_as_points = Setting(False, schema_only=True)
+    draw_as_scatterplot = Setting(False, schema_only=True)
 
     def __init__(self):
         self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
@@ -1614,21 +1614,21 @@ class ScatterPlotMixin:
         self.selection_changed.connect(self.draw_scatterplot)
 
         # add to a box defined in the parent class
-        gui.checkBox(self.axes_settings_box, self, "draw_as_points",
-                     "As points", callback=self._draw_as_points)
+        gui.checkBox(self.axes_settings_box, self, "draw_as_scatterplot",
+                     "As Scatter Plot", callback=self._draw_as_points)
 
-        self.img.setVisible(not self.draw_as_points)
+        self.img.setVisible(not self.draw_as_scatterplot)
 
         self.image_updated.connect(self.draw_scatterplot)
 
     def _draw_as_points(self):
-        self.img.setVisible(not self.draw_as_points)
+        self.img.setVisible(not self.draw_as_scatterplot)
         self.draw_scatterplot()
 
     def draw_scatterplot(self):
         self.scatterplot_item.clear()
 
-        if not self.draw_as_points:
+        if not self.draw_as_scatterplot:
             self.scatterplot_item.setData()
             return
 
@@ -1789,7 +1789,7 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
     replaces = ["orangecontrib.infrared.widgets.owhyper.OWHyper"]
     keywords = ["image", "spectral", "chemical", "imaging"]
 
-    settings_version = 8
+    settings_version = 9
     settingsHandler = DomainContextHandler()
 
     imageplot = SettingProvider(ImagePlot)
