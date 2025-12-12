@@ -168,6 +168,9 @@ class OWCos(OWWidget):
         # TODO implement outputting the matrix
         corr_matrix = Output("2D correlation matrix", Orange.misc.DistMatrix, dynamic=False)
 
+    class Error(OWWidget.Error):
+        empty_data = Msg("Input data is empty.")
+
     settingsHandler = settings.DomainContextHandler()
     selector = settings.Setting(0)
     isonum = settings.Setting(5)
@@ -328,6 +331,7 @@ class OWCos(OWWidget):
 
     def handleNewSignals(self):
         self.cos2Dplot.clear()
+        self.Error.empty_data.clear()
         self.cosmat = None
 
         d1 = self.data1
@@ -335,11 +339,14 @@ class OWCos(OWWidget):
         if d1 is None:
             d1, d2 = d2, d1
 
-        if d1 is not None:
-            if d2 is None:
-                self.cosmat = calc_cos(d1, d1)
-            else:
-                self.cosmat = calc_cos(d1, d2)
+        if not d2:
+            d2 = d1
+
+        if (not d1 or not d2 or not d1.X.size or not d2.X.size or
+                np.all(np.isnan(d1.X)) or np.all(np.isnan(d2.X))):
+            self.Error.empty_data()
+        else:
+            self.cosmat = calc_cos(d1, d2)
 
         self.commit()
 
