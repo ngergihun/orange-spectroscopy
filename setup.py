@@ -141,7 +141,7 @@ if __name__ == '__main__':
             'h5py',
             'extranormal3 >=0.0.3',
             'renishawWiRE>=0.1.8',
-            'pillow>=9.0.0',
+            'pillow>=9.2.0',
             'lmfit>=1.3.3',
             'bottleneck',
             'pebble',

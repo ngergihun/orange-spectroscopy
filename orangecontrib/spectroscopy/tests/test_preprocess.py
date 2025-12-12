@@ -4,7 +4,7 @@ import unittest
 import numpy as np
 
 import Orange
-from Orange.classification import LogisticRegressionLearner
+from Orange.classification import RandomForestLearner
 from Orange.data import Table
 from Orange.evaluation import TestOnTestData, AUC
 
@@ -87,10 +87,7 @@ class TestConversionMixin:
     def test_slightly_different_domain(self):
         """ If test data has a slightly different domain then (with interpolation)
         we should obtain a similar classification score. """
-        # rows full of unknowns make LogisticRegression undefined
-        # we can obtain them, for example, with EMSC, if one of the badspectra
-        # is a spectrum from the data
-        learner = LogisticRegressionLearner(max_iter=1000, preprocessors=[_RemoveNaNRows()])
+        learner = RandomForestLearner(random_state=42)
 
         for proc in self.preprocessors:
             if hasattr(proc, "skip_add_zeros"):
@@ -137,13 +134,6 @@ class TestConversionIndpSamplesMixin(TestConversionMixin):
                 test_transformed = test.transform(train.domain)
                 np.testing.assert_almost_equal(test_transformed.X, test1.X,
                                                err_msg="Preprocessor " + str(proc))
-
-class _RemoveNaNRows(Orange.preprocess.preprocess.Preprocess):
-
-    def __call__(self, data):
-        mask = np.isnan(data.X)
-        mask = np.any(mask, axis=1)
-        return data[~mask]
 
 
 class TestStrangeDataMixin:
