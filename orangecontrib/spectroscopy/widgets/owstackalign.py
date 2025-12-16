@@ -286,31 +286,30 @@ class OWStackAlign(OWWidget):
 
     @Inputs.data
     def set_data(self, dataset):
-        self.Warning.missing_reference.clear()
-        self.closeContext()
-        self.openContext(dataset)
-        if dataset is not None:
-            self.data = dataset
-            self._check_use_ref()
-            self._sanitize_ref_frame()
-        else:
-            self.data = None
-        self.Error.nan_in_image.clear()
-        self.Error.invalid_axis.clear()
-        self.Error.wrong_reference.clear()
-        self.commit.now()
+        self.data = dataset
 
     @Inputs.refdata
     def set_reference(self, refdataset):
+        self.refdata = refdataset
+
+    def handleNewSignals(self):
         self.Warning.missing_reference.clear()
         self.closeContext()
-        self.openContext(refdataset)
-        if refdataset is not None:
-            self.refdata = refdataset
-            self._check_use_ref()
-            self._sanitize_ref_frame()
+
+        if self.refdata is not None:
+                self.openContext(self.refdata)
+                self._sanitize_ref_frame()
         else:
             self.refdata = None
+
+        if self.data is not None:
+                self.openContext(self.data)
+                self._sanitize_ref_frame()
+        else:
+            self.data = None
+
+        self._check_use_ref()
+
         self.Error.nan_in_image.clear()
         self.Error.invalid_axis.clear()
         self.Error.wrong_reference.clear()
