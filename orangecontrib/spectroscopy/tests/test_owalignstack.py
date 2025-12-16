@@ -178,7 +178,7 @@ def lineedit_type(le, text):
 
 def orange_table_from_3d(image3d):
     info = _spectra_from_image(image3d,
-                               range(5),
+                               range(image3d.shape[2]),
                                range(image3d[:, :, 0].shape[1]),
                                range(image3d[:, :, 0].shape[0]))
     data = build_spec_table(*info)
@@ -187,6 +187,7 @@ def orange_table_from_3d(image3d):
 
 stxm_diamond = orange_table_from_3d(fake_stxm_from_image(diamond()))
 stxm_rectangle = orange_table_from_3d(fake_stxm_from_rectangle(rectangle()))
+stxm_rectangle_short = orange_table_from_3d(fake_stxm_from_rectangle(rectangle())[:, :, :3])
 
 
 def orange_table_to_3d(data):
@@ -299,6 +300,14 @@ class TestOWStackAlign(WidgetTest):
         # Reference data is connected = warning disappears
         self.send_signal(self.widget.Inputs.refdata, data)
         self.assertFalse(self.widget.Warning.missing_reference.is_shown())
+
+    def test_output_aligned_with_ref(self):
+        self.send_signal(self.widget.Inputs.data, stxm_diamond)
+        self.send_signal(self.widget.Inputs.refdata, stxm_rectangle_short)
+        self.widget.controls.use_refinput.toggle()
+        self.assertTrue(self.widget.Error.wrong_reference.is_shown())
+        self.widget.controls.use_refinput.toggle()
+        self.assertFalse(self.widget.Error.wrong_reference.is_shown())
 
     def test_missing_metas(self):
         domain = Domain(stxm_diamond.domain.attributes)
