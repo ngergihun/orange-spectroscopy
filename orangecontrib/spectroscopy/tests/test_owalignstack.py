@@ -301,7 +301,7 @@ class TestOWStackAlign(WidgetTest):
         self.send_signal(self.widget.Inputs.refdata, data)
         self.assertFalse(self.widget.Warning.missing_reference.is_shown())
 
-    def test_output_aligned_with_ref(self):
+    def test_output_aligned_with_ref_unmatched(self):
         self.send_signal(self.widget.Inputs.data, stxm_diamond)
         self.send_signal(self.widget.Inputs.refdata, stxm_rectangle_short)
         self.widget.controls.use_refinput.toggle()
