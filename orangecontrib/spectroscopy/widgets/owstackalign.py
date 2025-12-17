@@ -4,7 +4,6 @@ import bottleneck as bn
 
 from scipy.ndimage import sobel
 from scipy.ndimage import shift
-from skimage.registration import phase_cross_correlation
 
 from AnyQt.QtCore import Qt
 from AnyQt.QtWidgets import QLabel
@@ -22,8 +21,7 @@ from orangecontrib.spectroscopy.widgets.gui import lineEditIntRange
 from orangecontrib.spectroscopy.utils import NanInsideHypercube, InvalidAxisException, \
     get_hypercube
 from orangecontrib.spectroscopy.preprocess.utils import WrongReferenceException
-
-
+from orangecontrib.spectroscopy.utils.skimage._phase_cross_correlation import phase_cross_correlation
 from orangecontrib.spectroscopy.widgets.owspectra import InteractiveViewBox
 
 

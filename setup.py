@@ -147,7 +147,6 @@ if __name__ == '__main__':
             'pebble',
             'agilent-format>=0.4.5',
             'pySNOM>=0.2.0',
-            'scikit-image>=0.25.2'
         ],
         extras_require={
             'test': ['coverage'],
