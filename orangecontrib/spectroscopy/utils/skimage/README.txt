@@ -1,6 +1,6 @@
 This code was extracted from scikit-image to avoid another binary dependency:
 - register_translation.py: copied without changes (v0.25.2)
-- shape.py: copied without changes (v0.15.0).
+- shape.py: copied without changes (v0.25.2).
 
 
 Scikit-image's licence follows.
