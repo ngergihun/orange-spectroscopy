@@ -251,7 +251,8 @@ class OWStackAlign(OWWidget):
                 self.ref_frame_num = self.refdata.X.shape[1]
 
     def _ref_frame_changed(self):
-        self._sanitize_ref_frame()
+        if self.refdata is not None or self.data is not None:
+            self._sanitize_ref_frame()
         self.commit.deferred()
 
     def _use_ref_changed(self):
@@ -292,19 +293,13 @@ class OWStackAlign(OWWidget):
 
     def handleNewSignals(self):
         self.Warning.missing_reference.clear()
-        self.closeContext()
-
-        if self.refdata is not None:
-                self.openContext(self.refdata)
-                self._sanitize_ref_frame()
-        else:
-            self.refdata = None
 
         if self.data is not None:
-                self.openContext(self.data)
-                self._sanitize_ref_frame()
-        else:
-            self.data = None
+            self.closeContext()
+            self.openContext(self.data)
+
+        if self.refdata is not None or self.data is not None:
+            self._sanitize_ref_frame()
 
         self._check_use_ref()
 
