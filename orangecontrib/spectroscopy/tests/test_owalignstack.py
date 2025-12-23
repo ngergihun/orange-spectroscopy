@@ -127,6 +127,20 @@ def diamond():
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
         [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=float)
 
+def rectangle():
+    return np.array([
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]], dtype=float)
+
 
 def fake_stxm_from_image(image):
     spectral = np.zeros(image.shape + (5,))
@@ -137,6 +151,14 @@ def fake_stxm_from_image(image):
     spectral[:, :, 4] = _down(_right(_down(diamond())))
     return spectral
 
+def fake_stxm_from_rectangle(image):
+    spectral = np.zeros(image.shape + (5,))
+    spectral[:, :, 0] = rectangle()
+    spectral[:, :, 1] = _up(rectangle())
+    spectral[:, :, 2] = _down(rectangle())
+    spectral[:, :, 3] = _right(rectangle())
+    spectral[:, :, 4] = _down(_right(_down(rectangle())))
+    return spectral
 
 class SideEffect():
     def __init__(self, fn):
@@ -156,7 +178,7 @@ def lineedit_type(le, text):
 
 def orange_table_from_3d(image3d):
     info = _spectra_from_image(image3d,
-                               range(5),
+                               range(image3d.shape[2]),
                                range(image3d[:, :, 0].shape[1]),
                                range(image3d[:, :, 0].shape[0]))
     data = build_spec_table(*info)
@@ -164,6 +186,8 @@ def orange_table_from_3d(image3d):
 
 
 stxm_diamond = orange_table_from_3d(fake_stxm_from_image(diamond()))
+stxm_rectangle = orange_table_from_3d(fake_stxm_from_rectangle(rectangle()))
+stxm_rectangle_short = orange_table_from_3d(fake_stxm_from_rectangle(rectangle())[:, :, :3])
 
 
 def orange_table_to_3d(data):
@@ -194,6 +218,15 @@ class TestOWStackAlign(WidgetTest):
 
     def test_output_aligned(self):
         self.send_signal(self.widget.Inputs.data, stxm_diamond)
+        out = self.get_output(self.widget.Outputs.newstack)
+        image3d = orange_table_to_3d(out)
+        for z in range(1, image3d.shape[2]):
+            np.testing.assert_almost_equal(image3d[:, :, 0], image3d[:, :, z])
+    
+    def test_output_aligned_with_ref(self):
+        self.send_signal(self.widget.Inputs.data, stxm_diamond)
+        self.send_signal(self.widget.Inputs.refdata, stxm_rectangle)
+        self.widget.controls.use_refinput.toggle()
         out = self.get_output(self.widget.Outputs.newstack)
         image3d = orange_table_to_3d(out)
         for z in range(1, image3d.shape[2]):
@@ -255,6 +288,26 @@ class TestOWStackAlign(WidgetTest):
         self.assertTrue(self.widget.Error.invalid_axis.is_shown())
         self.send_signal(self.widget.Inputs.data, None)
         self.assertFalse(self.widget.Error.invalid_axis.is_shown())
+    
+    def test_reference_warning(self):
+        data = stxm_diamond
+        # only Data is set, reference input not used = No warning
+        self.send_signal(self.widget.Inputs.data, data)
+        self.assertFalse(self.widget.Warning.missing_reference.is_shown())
+        # Toggle use reference input option = warning appears
+        self.widget.controls.use_refinput.toggle()
+        self.assertTrue(self.widget.Warning.missing_reference.is_shown())
+        # Reference data is connected = warning disappears
+        self.send_signal(self.widget.Inputs.refdata, data)
+        self.assertFalse(self.widget.Warning.missing_reference.is_shown())
+
+    def test_output_aligned_with_ref_unmatched(self):
+        self.send_signal(self.widget.Inputs.data, stxm_diamond)
+        self.send_signal(self.widget.Inputs.refdata, stxm_rectangle_short)
+        self.widget.controls.use_refinput.toggle()
+        self.assertTrue(self.widget.Error.wrong_reference.is_shown())
+        self.widget.controls.use_refinput.toggle()
+        self.assertFalse(self.widget.Error.wrong_reference.is_shown())
 
     def test_missing_metas(self):
         domain = Domain(stxm_diamond.domain.attributes)
