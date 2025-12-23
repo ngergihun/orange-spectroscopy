@@ -294,9 +294,8 @@ class OWStackAlign(OWWidget):
     def handleNewSignals(self):
         self.Warning.missing_reference.clear()
 
-        if self.data is not None:
-            self.closeContext()
-            self.openContext(self.data)
+        self.closeContext()
+        self.openContext(self.data)
 
         if self.refdata is not None or self.data is not None:
             self._sanitize_ref_frame()
