@@ -47,7 +47,7 @@ class HDF5MetaReader(FileFormat):
             reader = HDF5Reader_SGM(self.filename)
             reader.sheet = self.sheet
             return reader.read()
-        except ValueError:
+        except (ValueError, IndexError):
             return HDF5Reader_ROCK(filename=self.filename).read()
 
 class HDRMetaReader(FileFormat):

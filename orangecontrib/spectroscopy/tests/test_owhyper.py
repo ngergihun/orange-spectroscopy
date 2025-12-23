@@ -235,7 +235,7 @@ class TestOWHyper(WidgetTest):
         self.assertIsNone(out, None)
 
         # select specific points
-        self.widget.imageplot.select_square(QPointF(53.20, 30.0), QPointF(53.21, 30.03))
+        self.widget.imageplot.select_square(QPointF(53.20, 30.0), QPointF(53.205, 30.02))
         out = self.get_output("Selection")
         np.testing.assert_almost_equal(out.metas,
                                        [[53.2043, 30.0185], [53.2043, 30.0085]],
@@ -474,6 +474,70 @@ class TestOWHyper(WidgetTest):
             # first three wavenumbers (features) should be passed to setImage
             target = [data.X[0, :3], data.X[1, :3]], [data.X[2, :3], data.X[3, :3]]
             np.testing.assert_equal(called, target)
+
+    def test_scatterplot_computation(self):
+        spectra = [[[0, 0, 2, 0],
+                    [0, 0, 1, 0]],
+                   [[1, 2, 2, 0],
+                    [0, 1, 1, 0]]]
+        wns = [0, 1, 2, 3]
+        x_locs = [0, 1]
+        y_locs = [0, 1]
+        data = build_spec_table(*_spectra_from_image(spectra, wns, x_locs, y_locs))
+
+        def colors_from_brush(brushes):
+            ret = []
+            for b in brushes:
+                c = b.color()
+                ret.append((c.red(), c.blue(), c.green()))
+            return ret
+
+        wrap = self.widget.imageplot.scatterplot_item
+
+        self.widget.imageplot.controls.draw_as_scatterplot.click()
+
+        # integral from zero
+        self.widget.integration_method = \
+            self.widget.integration_methods.index(IntegrateFeatureSimple)
+        self.send_signal("Data", data)
+        with patch.object(wrap, 'setData', wraps=wrap.setData) as m:
+            wait_for_image(self.widget)
+            self.widget.imageplot.draw_scatterplot()
+            call = m.call_args_list[-1]
+            np.testing.assert_equal(call.kwargs['x'], [0, 1, 0, 1])
+            np.testing.assert_equal(call.kwargs['y'], [0, 0, 1, 1])
+            # the current state hardcoded
+            np.testing.assert_equal(colors_from_brush(call.kwargs['brush']),
+                                    [(0, 177, 80), (0, 124, 12), (255, 35, 241), (0, 177, 80)])
+
+        # single wavenumber (feature)
+        self.widget.controls.value_type.buttons[1].click()
+        self.widget.attr_value = data.domain.attributes[1]
+        self.widget.update_feature_value()
+        with patch.object(wrap, 'setData', wraps=wrap.setData) as m:
+            wait_for_image(self.widget)
+            self.widget.imageplot.draw_scatterplot()
+            call = m.call_args_list[-1]
+            np.testing.assert_equal(call.kwargs['x'], [0, 1, 0, 1])
+            np.testing.assert_equal(call.kwargs['y'], [0, 0, 1, 1])
+            # the current state hardcoded
+            np.testing.assert_equal(colors_from_brush(call.kwargs['brush']),
+                                    [(0, 124, 12), (0, 124, 12), (255, 35, 241), (27, 97, 142)])
+
+        # RGB
+        self.widget.controls.value_type.buttons[2].click()
+        self.widget.rgb_red_value = data.domain.attributes[0]
+        self.widget.rgb_green_value = data.domain.attributes[1]
+        self.widget.rgb_blue_value = data.domain.attributes[2]
+        self.widget.update_rgb_value()
+        with patch.object(wrap, 'setData', wraps=wrap.setData) as m:
+            wait_for_image(self.widget)
+            self.widget.imageplot.draw_scatterplot()
+            call = m.call_args_list[-1]
+            np.testing.assert_equal(call.kwargs['x'], [0, 1, 0, 1])
+            np.testing.assert_equal(call.kwargs['y'], [0, 0, 1, 1])
+            np.testing.assert_equal(colors_from_brush(call.kwargs['brush']),
+                                    [(0, 255, 0), (0, 0, 0), (255, 255, 255), (0, 0, 128)])
 
     def test_migrate_visual_setttings(self):
         settings = {"curveplot":

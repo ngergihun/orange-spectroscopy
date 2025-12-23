@@ -1,4 +1,5 @@
 import collections.abc
+from functools import cache
 import math
 import warnings
 from collections import OrderedDict
@@ -36,6 +37,7 @@ from Orange.widgets.utils.itemmodels import DomainModel, PyListModel
 from Orange.widgets.utils import saveplot
 from Orange.widgets.utils.concurrent import TaskState, ConcurrentMixin
 from Orange.widgets.visualize.utils.plotutils import GraphicsView, PlotItem, AxisItem
+from Orange.widgets.visualize.owscatterplotgraph import ScatterPlotItem
 
 from orangewidget.utils.visual_settings_dlg import VisualSettingsDialog
 
@@ -54,7 +56,11 @@ from orangecontrib.spectroscopy.widgets.line_geometry import in_polygon, interse
 from orangecontrib.spectroscopy.widgets.utils import \
     SelectionGroupMixin, SelectionOutputsMixin
 
+
 IMAGE_TOO_BIG = 1024*1024*100
+
+
+NAN_COLOR = (100, 100, 100, 255)
 
 
 class InterruptException(Exception):
@@ -131,11 +137,9 @@ def _shift(ls):
     return (ls[1]-ls[0])/(2*(ls[2]-1))
 
 
-def get_levels(img):
+def get_levels(array):
     """ Compute levels. Account for NaN values. """
-    while img.size > 2 ** 16:
-        img = img[::2, ::2]
-    mn, mx = bottleneck.nanmin(img), bottleneck.nanmax(img)
+    mn, mx = bottleneck.nanmin(array), bottleneck.nanmax(array)
     if mn == mx or math.isnan(mx) or math.isnan(mn):
         mn = 0
         mx = 255
@@ -191,21 +195,29 @@ class ImageItemNan(pg.ImageItem):
 
         argb, alpha = pg.makeARGB(image, lut=lut, levels=levels)  # format is bgra
 
-        argb[image_nans] = (100, 100, 100, 255)  # replace unknown values with a color
+        argb[image_nans] = NAN_COLOR  # replace unknown values with a color
+        argb = color_with_selections(argb, self.selection, weight=1, reverse_color=True)
+        self.qimage = pg.makeQImage(argb, argb.shape[-1] == 4, transpose=False)
 
-        w = 1
-        if np.any(self.selection):
-            max_sel = np.max(self.selection)
-            colors = DiscreteVariable(name="colors", values=map(str, range(max_sel))).colors
-            fargb = argb.astype(np.float32)
-            for i, color in enumerate(colors):
-                color = np.hstack((color[::-1], [255]))  # qt color
-                sel = self.selection == i+1
+
+def color_with_selections(argb, selection, weight=None, reverse_color=False):
+    if np.any(selection):
+        argb = argb.copy()
+        max_sel = np.max(selection)
+        colors = DiscreteVariable(name="colors", values=map(str, range(max_sel))).colors
+        fargb = argb.astype(float)
+        for i, color in enumerate(colors):
+            color = color[::-1] if reverse_color else color
+            color = np.hstack((color, [255]))  # qt color
+            sel = selection == i + 1
+            if weight is not None:
                 # average the current color with the selection color
-                argb[sel] = (fargb[sel] + w*color) / (1+w)
-            alpha = True
-            argb[:, :, 3] = np.maximum((self.selection > 0)*255, 100)
-        self.qimage = pg.makeQImage(argb, alpha, transpose=False)
+                argb[sel] = (fargb[sel] + weight * color) / (1 + weight)
+            else:
+                argb[sel] = color
+            argb[..., 3] = np.maximum((selection > 0) * 255, 100)
+        argb = argb.astype(np.uint8)
+    return argb
 
 
 def color_palette_table(colors, underflow=None, overflow=None):
@@ -758,18 +770,16 @@ class ImageColorSettingMixin:
         else:
             self.legend.setVisible(self.show_legend)
 
-    def update_levels(self):
+    def compute_palette_min_max_points(self):
         if not self.data:
             return
 
         if self.fixed_levels is not None:
-            levels = list(self.fixed_levels)
-        elif self.img.image is not None and self.img.image.ndim == 2:
-            levels = get_levels(self.img.image)
-        elif self.img.image is not None and self.img.image.shape[2] == 1:
-            levels = get_levels(self.img.image[:, :, 0])
-        elif self.img.image is not None and self.img.image.shape[2] == 3:
-            return
+            levels = list(self.fixed_levels)  # this is also
+        elif self.data_values is not None and self.data_values.shape[1] == 3:
+            return  # RGB
+        elif self.data_values is not None:
+            levels = get_levels(self.data_values)
         else:
             levels = [0, 255]
 
@@ -791,8 +801,7 @@ class ImageColorSettingMixin:
         self._threshold_high_slider.setEnabled(enabled_level_settings)
 
         if self.fixed_levels is not None:
-            self.img.setLevels(self.fixed_levels)
-            return
+            return self.fixed_levels
 
         if not self.threshold_low < self.threshold_high:
             # TODO this belongs here, not in the parent
@@ -807,10 +816,16 @@ class ImageColorSettingMixin:
         ll_threshold = ll + (lh - ll) * self.threshold_low
         lh_threshold = ll + (lh - ll) * self.threshold_high
 
-        self.img.setLevels([ll_threshold, lh_threshold])
-        self.legend.set_range(ll_threshold, lh_threshold)
+        return [ll_threshold, lh_threshold]
 
-    def update_color_schema(self):
+    def update_levels(self):
+        levels = self.compute_palette_min_max_points()
+        if levels is None:
+            return  # RGB
+        self.img.setLevels(levels)
+        self.legend.set_range(levels[0], levels[1])
+
+    def compute_lut(self):
         if not self.data:
             return
 
@@ -818,15 +833,20 @@ class ImageColorSettingMixin:
             dat = self.parent.data.domain[self.parent.attr_value]
             if isinstance(dat, DiscreteVariable):
                 # use a defined discrete palette
-                self.img.setLookupTable(dat.colors)
-                return
+                return dat.colors
 
         # use a continuous palette
         data = self.color_cb.itemData(self.palette_index, role=Qt.UserRole)
         _, colors = max(data.items())
         cols = color_palette_table(colors)
-        self.img.setLookupTable(cols)
-        self.legend.set_colors(cols)
+        return cols
+
+    def update_color_schema(self):
+        lut = self.compute_lut()
+        if lut is None:
+            return
+        self.img.setLookupTable(lut)
+        self.legend.set_colors(lut)
 
     def reset_thresholds(self):
         self.threshold_low = 0.
@@ -877,12 +897,12 @@ class ImageRGBSettingMixin:
         box.layout().addLayout(form)
         return box
 
-    def update_rgb_levels(self):
+    def compute_rgb_levels(self):
         if not self.data:
             return
 
-        if self.img.image is not None and self.img.image.shape[2] == 3:
-            levels = [get_levels(self.img.image[:, :, i]) for i in range(self.img.image.shape[2])]
+        if self.data_values is not None and self.data_values.shape[1] == 3:
+            levels = [get_levels(self.data_values[:, i]) for i in range(self.img.image.shape[2])]
         else:
             return
 
@@ -910,7 +930,12 @@ class ImageRGBSettingMixin:
         bll = float(self.blue_level_low) if self.blue_level_low is not None else levels[2][0]
         blh = float(self.blue_level_high) if self.blue_level_high is not None else levels[2][1]
 
-        new_levels = [[rll, rlh], [gll, glh], [bll, blh]]
+        return [[rll, rlh], [gll, glh], [bll, blh]]
+
+    def update_rgb_levels(self):
+        new_levels = self.compute_rgb_levels()
+        if new_levels is None:
+            return  # not RGB
         self.img.setLevels(new_levels)
 
 
@@ -980,18 +1005,10 @@ class ImageSelectionMixin:
 
     def select_polygon(self, polygon):
         """ Select by a polygon which has to contain whole pixels. """
-        if self.data and self.lsx and self.lsy:
+        if self.data and self.data_points is not None:
             polygon = [(p.x(), p.y()) for p in polygon]
-            # a polygon should contain all pixel
-            shiftx = _shift(self.lsx)
-            shifty = _shift(self.lsy)
-            points_edges = [self.data_points + [[shiftx, shifty]],
-                            self.data_points + [[-shiftx, shifty]],
-                            self.data_points + [[shiftx, -shifty]],
-                            self.data_points + [[-shiftx, -shifty]]]
-            inp = in_polygon(points_edges[0], polygon)
-            for p in points_edges[1:]:
-                inp *= in_polygon(p, polygon)
+            # a polygon should contain data point center
+            inp = in_polygon(self.data_points, polygon)
             self.make_selection(inp)
 
     def select_line(self, p1, p2):
@@ -1336,6 +1353,8 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.data = None
         self.data_ids = {}
 
+        self.image_updated.connect(self.refresh_img_selection)
+
     def init_interface_data(self, data):
         self.init_attr_values(data)
 
@@ -1414,7 +1433,7 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.selection_changed.emit()
 
     def _points_at_pos(self, pos):
-        if self.data and self.lsx and self.lsy:
+        if self.data and self.lsx and self.lsy and self.img.isVisible():
             x, y = pos.x(), pos.y()
             distance = np.abs(self.data_points - [[x, y]])
             sel = (distance[:, 0] < _shift(self.lsx)) * (distance[:, 1] < _shift(self.lsy))
@@ -1439,10 +1458,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         self.data_valid_positions = None
         self.xindex = None
         self.yindex = None
-
-        if isinstance(self, VectorMixin):
-            self.update_binsize()
-            self.update_vectors()  # clears the vector plot
 
         self.start(self.compute_image, self.data, self.attr_x, self.attr_y,
                     self.parent.image_values(),
@@ -1520,6 +1535,7 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         lsx, lsy = res.lsx, res.lsy
 
         self.fixed_levels = res.image_values_fixed_levels
+        self.data_values = d
         if finished:
             self.lsx, self.lsy = lsx, lsy
             self.data_points = res.data_points
@@ -1538,7 +1554,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             imdata = np.ones((lsy[2], lsx[2], d.shape[1])) * float("nan")
             imdata[yindex[valid], xindex[valid]] = d[valid]
 
-            self.data_values = d
             self.data_imagepixels = np.vstack((yindex, xindex)).T
             self.img.setImage(imdata, autoLevels=False)
             self.update_levels()
@@ -1550,10 +1565,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             self.yindex = yindex
             self.xindex = xindex
 
-            if isinstance(self, VectorMixin):
-                self.update_binsize()
-                self.update_vectors()
-
             # shift centres of the pixels so that the axes are useful
             shiftx = _shift(lsx)
             shifty = _shift(lsy)
@@ -1564,7 +1575,6 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             self.img.setRect(QRectF(left, bottom, width, height))
 
         if finished:
-            self.refresh_img_selection()
             self.image_updated.emit()
 
     def on_done(self, res):
@@ -1586,8 +1596,123 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
             raise ex
 
 
+def _make_pen(color, width):
+    p = QPen(color, width)
+    p.setCosmetic(True)
+    return p
+
+
+class ScatterPlotMixin:
+
+    draw_as_scatterplot = Setting(False, schema_only=True)
+
+    def __init__(self):
+        self.scatterplot_item = ScatterPlotItem(symbol='o', size=13.5)
+        self.plot.addItem(self.scatterplot_item)
+
+        self.scatterplot_item.sigClicked.connect(self.select_by_click_scatterplot)
+        self.selection_changed.connect(self.draw_scatterplot)
+
+        # add to a box defined in the parent class
+        gui.checkBox(self.axes_settings_box, self, "draw_as_scatterplot",
+                     "As Scatter Plot", callback=self._draw_as_points)
+
+        self.img.setVisible(not self.draw_as_scatterplot)
+
+        self.image_updated.connect(self.draw_scatterplot)
+
+    def _draw_as_points(self):
+        self.img.setVisible(not self.draw_as_scatterplot)
+        self.draw_scatterplot()
+
+    def draw_scatterplot(self):
+        self.scatterplot_item.clear()
+
+        if not self.draw_as_scatterplot:
+            self.scatterplot_item.setData()
+            return
+
+        if self.data_points is None:
+            return
+
+        xy = self.data_points.T[:, self.data_valid_positions]
+        vals = self.data_values[self.data_valid_positions]
+        indexes = np.arange(len(self.data_points), dtype=int)[self.data_valid_positions]
+
+        levels = self.compute_palette_min_max_points()
+
+        is_rgb = levels is None
+
+        if not is_rgb:
+            lut = self.compute_lut()
+            bins = len(lut)
+            minv, maxv = levels
+        else:
+            rgb_levels = np.array(self.compute_rgb_levels())
+            minv = rgb_levels[:, 0]
+            maxv = rgb_levels[:, 1]
+            bins = 256
+
+        intensity = np.round(((vals - minv)/(maxv - minv))*(bins-1))
+        nans = ~np.isfinite(intensity)
+        nans = np.any(nans, axis=1)
+        intensity[nans] = 0  # to prevent artifact later on
+        binned = np.clip(intensity, 0, bins-1).astype(int)
+
+        if not is_rgb:
+            colors = lut[binned[:, 0]]
+        else:
+            colors = binned
+
+        if colors.shape[-1] == 3:  # add alpha channel
+            colors = np.c_[colors, np.full((len(colors), 1), 255)]
+
+        colors[nans] = [np.array(NAN_COLOR)]  # replace unknown values with a color
+
+        selection_colors = color_with_selections(colors, self.selection_group, None)
+        have_selection = not selection_colors is colors
+
+        @cache
+        def mk_color(*args):
+            args = [int(a) for a in args]
+            return QColor(*args)
+
+        @cache
+        def mk_brush(*args):
+            return QBrush(mk_color(*args))
+
+        @cache
+        def mk_pen_normal(*args):
+            return _make_pen(mk_color(*args).darker(120), 1.5)
+
+        @cache
+        def mk_pen_selection(*args):
+            return _make_pen(mk_color(*args), 3.5)
+
+        brushes = [mk_brush(*c) for c in colors]
+        if not have_selection:
+            pens = [mk_pen_normal(*c) for c in colors]
+        else:
+            pens = [mk_pen_selection(*c) for c in selection_colors]
+
+        # Defaults from the Scatter Plot widget:
+        # - size : 13.5
+        # - border is color.darker(120) with width of 1.5
+        self.scatterplot_item.setData(x=xy[0], y=xy[1],
+                                      data=indexes,
+                                      pen=pens,
+                                      brush=brushes)
+
+    def select_by_click_scatterplot(self, _, points):
+        selected_indices = np.array([p.data() for p in points], dtype=int)
+        sel = np.full(len(self.data_points), False)
+        sel[selected_indices] = True
+        self.make_selection(sel)
+
+
 class ImagePlot(BasicImagePlot,
-                VectorSettingMixin, VectorMixin):
+                VectorSettingMixin, VectorMixin,
+                ScatterPlotMixin):
 
     attr_x = ContextSetting(None, exclude_attributes=True)
     attr_y = ContextSetting(None, exclude_attributes=True)
@@ -1596,6 +1721,31 @@ class ImagePlot(BasicImagePlot,
         BasicImagePlot.__init__(self, parent)
         VectorSettingMixin.__init__(self)
         VectorMixin.__init__(self)
+        ScatterPlotMixin.__init__(self)
+
+        self.image_updated.connect(self.update_binsize)
+        self.image_updated.connect(self.update_vectors)
+
+    def update_view(self):
+        super().update_view()
+        self.draw_scatterplot()
+        self.update_binsize()
+        self.update_vectors()  # clears the vector plot
+
+    # TODO The following make ScatterPlot redraw three times when a new
+    # image is computed
+
+    def update_levels(self):
+        super().update_levels()
+        self.draw_scatterplot()
+
+    def update_rgb_levels(self):
+        super().update_rgb_levels()
+        self.draw_scatterplot()
+
+    def update_color_schema(self):
+        super().update_color_schema()
+        self.draw_scatterplot()
 
 
 class CurvePlotHyper(CurvePlot):
@@ -1639,7 +1789,7 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
     replaces = ["orangecontrib.infrared.widgets.owhyper.OWHyper"]
     keywords = ["image", "spectral", "chemical", "imaging"]
 
-    settings_version = 8
+    settings_version = 9
     settingsHandler = DomainContextHandler()
 
     imageplot = SettingProvider(ImagePlot)
@@ -1715,7 +1865,7 @@ class OWHyper(OWWidget, SelectionOutputsMixin):
         super().__init__()
         SelectionOutputsMixin.__init__(self)
 
-        iabox = gui.widgetBox(self.controlArea, "Image axes")
+        iabox = gui.widgetBox(self.controlArea, "Display")
 
         dbox = gui.widgetBox(self.controlArea, "Image values")
 

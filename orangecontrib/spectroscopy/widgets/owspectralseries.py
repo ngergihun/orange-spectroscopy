@@ -118,6 +118,7 @@ class LineScanPlot(QWidget, OWComponent, SelectionGroupMixin,
         self.lsy = None  # info about the Y axis
 
         self.data = None
+        self.data_values = None
         self.data_ids = {}
 
     def init_interface_data(self, data):
@@ -167,6 +168,7 @@ class LineScanPlot(QWidget, OWComponent, SelectionGroupMixin,
         self.legend.set_colors(None)
         self.lsx = None
         self.lsy = None
+        self.data_values = None
         self.wavenumbers = None
         self.data_xs = None
         self.data_imagepixels = None
@@ -183,6 +185,8 @@ class LineScanPlot(QWidget, OWComponent, SelectionGroupMixin,
 
             self.wavenumbers = wavenumbers = getx(self.data)
             self.lsy = lsy = values_to_linspace(wavenumbers)
+
+            self.data_values = self.data.X
 
             # set data
             imdata = np.ones((lsy[2], lsx[2])) * float("nan")
