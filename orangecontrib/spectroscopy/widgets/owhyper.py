@@ -1535,10 +1535,10 @@ class BasicImagePlot(QWidget, OWComponent, SelectionGroupMixin,
         lsx, lsy = res.lsx, res.lsy
 
         self.fixed_levels = res.image_values_fixed_levels
+        self.data_values = d
         if finished:
             self.lsx, self.lsy = lsx, lsy
             self.data_points = res.data_points
-            self.data_values = d
 
         xindex, xnan = index_values_nan(res.coorx, lsx)
         yindex, ynan = index_values_nan(res.coory, lsy)
