@@ -60,6 +60,7 @@ class TestDat(unittest.TestCase):
         d2 = Orange.data.Table("peach_juice.0")
         # dpt file has rounded values
         np.testing.assert_allclose(d1.X, d2.X, atol=1e-5)
+        np.testing.assert_almost_equal(getx(d1), getx(d2), decimal=5)
 
     def test_roundtrip(self):
         with named_file("", suffix=".dat") as fn:
@@ -111,6 +112,11 @@ except OSError:
 
 @unittest.skipIf(opusFC is None, "opusFC module not installed")
 class TestOpusReader(unittest.TestCase):
+
+    def test_read(self):
+        juice = Orange.data.Table("peach_juice.0")
+        self.assertAlmostEqual(juice.X[0,3], 0.90655535)
+        self.assertEqual(juice.domain.attributes[3].name, "3994.330014648437")
 
     @unittest.skipIf(no_visible_image is False, "Missing opus/no_visible_images.0")
     def test_no_visible_image_read(self):
