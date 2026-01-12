@@ -52,7 +52,7 @@ class OPUSReader(FileFormat):
 
         attrs, clses, metas = [], [], []
 
-        attrs = [ContinuousVariable.make(repr(data.x[i]))
+        attrs = [ContinuousVariable(str(data.x[i]))
                  for i in range(data.x.shape[0])]
 
         y_data = None
@@ -83,7 +83,7 @@ class OPUSReader(FileFormat):
             metas.extend([ContinuousVariable.make(MAP_X_VAR),
                           ContinuousVariable.make(MAP_Y_VAR),
                           StringVariable.make('map_region')])
-            attrs = [ContinuousVariable.make(repr(data.labels[i]))
+            attrs = [ContinuousVariable(str(data.labels[i]))
                      for i in range(len(data.labels))]
             for region in data.regions:
                 y_data.append(region.spectra)
@@ -115,7 +115,7 @@ class OPUSReader(FileFormat):
             metas.extend([ContinuousVariable.make(MAP_X_VAR),
                           ContinuousVariable.make(MAP_Y_VAR)])
 
-            attrs = [ContinuousVariable.make(repr(data.labels[i]))
+            attrs = [ContinuousVariable(str(data.labels[i]))
                      for i in range(len(data.labels))]
             data_3D = data.traces
 
