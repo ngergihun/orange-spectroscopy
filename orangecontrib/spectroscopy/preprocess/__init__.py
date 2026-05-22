@@ -44,6 +44,7 @@ from orangecontrib.spectroscopy.preprocess.utils import (
     PreprocessException,
     linear_baseline,
 )
+from pySNOM.spectra import RotatePhase as PySNOMRotatePhase
 
 
 class MNFDenoising(Preprocess):
@@ -401,6 +402,37 @@ class LinearBaseline(Preprocess):
         )
         atts = [
             a.copy(compute_value=LinearBaselineFeature(i, common))
+            for i, a in enumerate(data.domain.attributes)
+        ]
+        domain = Orange.data.Domain(atts, data.domain.class_vars, data.domain.metas)
+        return data.from_table(domain, data)
+
+
+class RotatePhaseFeature(SelectColumn):
+    InheritEq = True
+
+
+class _RotatePhaseCommon(CommonDomainOrderUnknowns):
+    def __init__(self, degree, wn_ref, domain):
+        super().__init__(domain)
+        self.degree = degree
+        self.wn_ref = wn_ref
+
+    def transformed(self, y, wavenumbers):
+        return PySNOMRotatePhase(degree=self.degree, wn_ref=self.wn_ref).transform(
+            y, wavenumbers
+        )
+
+
+class RotatePhase(Preprocess):
+    def __init__(self, degree=0.0, wn_ref=1000.0):
+        self.degree = degree
+        self.wn_ref = wn_ref
+
+    def __call__(self, data):
+        common = _RotatePhaseCommon(self.degree, self.wn_ref, data.domain)
+        atts = [
+            a.copy(compute_value=RotatePhaseFeature(i, common))
             for i, a in enumerate(data.domain.attributes)
         ]
         domain = Orange.data.Domain(atts, data.domain.class_vars, data.domain.metas)
